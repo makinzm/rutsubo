@@ -12,7 +12,6 @@ import asyncio
 import json
 import logging
 import random
-from typing import Any
 
 import anthropic
 import httpx
@@ -29,6 +28,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_EPSILON = 0.2
 # 最大選択エージェント数
 MAX_AGENTS = 3
+# 難易度・リスクレベルの有効値
+_VALID_LEVELS = {"low", "medium", "high"}
+# Claude API モデル名
+_CLAUDE_MODEL = "claude-sonnet-4-6"
 
 
 # ---------------------------------------------------------------------------
@@ -76,26 +79,23 @@ def assess_task(prompt: str) -> dict[str, str]:
         '例: {"difficulty": "medium", "risk_level": "low"}'
     )
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=_CLAUDE_MODEL,
         max_tokens=100,
         system=system,
         messages=[{"role": "user", "content": f"タスク: {prompt}"}],
     )
     raw = response.content[0].text.strip()
-    # JSON部分だけ抽出（余分なテキストがあった場合に備えて）
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
-        # フォールバック
-        data = {"difficulty": "medium", "risk_level": "medium"}
+        data = {}
 
     difficulty = data.get("difficulty", "medium")
     risk_level = data.get("risk_level", "medium")
-    # 無効な値のフォールバック
-    valid = {"low", "medium", "high"}
-    if difficulty not in valid:
+    # 無効な値はmediumにフォールバック
+    if difficulty not in _VALID_LEVELS:
         difficulty = "medium"
-    if risk_level not in valid:
+    if risk_level not in _VALID_LEVELS:
         risk_level = "medium"
 
     return {"difficulty": difficulty, "risk_level": risk_level}
@@ -127,7 +127,7 @@ def decompose_task(prompt: str, agents: list[Agent]) -> list[dict[str, str]]:
         f"利用可能なエージェント:\n{agent_profiles}"
     )
     response = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=_CLAUDE_MODEL,
         max_tokens=500,
         system=system,
         messages=[{"role": "user", "content": user_message}],

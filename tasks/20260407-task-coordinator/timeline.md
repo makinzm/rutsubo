@@ -31,5 +31,8 @@
   - バックグラウンド実行のため difficulty/risk_level はレスポンス時点で None が正しい
 - 実行結果: **29 passed**
 
-## REFACTOR フェーズ（予定）
-- コードの整理・ドキュメント追加
+## REFACTOR フェーズ — 完了
+- 不要インポート（`Any`）除去
+- `_VALID_LEVELS`, `_CLAUDE_MODEL` 定数に切り出し
+- `assess_task` のフォールバックロジックを `_VALID_LEVELS` で統一
+- 実行結果: **29 passed**（変更なし）
