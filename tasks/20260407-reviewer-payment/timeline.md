@@ -28,5 +28,10 @@ FAILED tests/test_coordinator_integration.py::test_coordinator_completes_task - 
 - app/services/coordinator.py: 評価・分配・trust_score更新フローを統合
 - 全43テストがGREEN（新規14テスト含む）
 
+### フェーズ2-D: REFACTOR フェーズ
+- asyncio.get_event_loop().run_until_complete() を asyncio.run() に統一（DeprecationWarning解消）
+- 未使用インポート（AsyncMock）を除去
+- 全43テストがWARNINGなしでGREEN
+
 ### 次のステップ
-- フェーズ2-D: REFACTOR フェーズ
+- フェーズ2.5: DAレビュー

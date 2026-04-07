@@ -5,7 +5,8 @@ reviewer サービスおよび agent_service.update_trust_score のテスト。
 DB は conftest.py の StaticPool インメモリ SQLite を使用。
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+import asyncio
+from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy import create_engine
@@ -57,8 +58,7 @@ def test_reviewer_returns_score():
         mock_anthropic.return_value = mock_client
         mock_client.messages.create.return_value = mock_resp
 
-        import asyncio
-        score = asyncio.get_event_loop().run_until_complete(
+        score = asyncio.run(
             evaluate_subtask(
                 prompt="Pythonでfizzbuzzを実装してください",
                 result="def fizzbuzz(n): ...",
@@ -94,8 +94,7 @@ def test_reviewer_score_range(raw_score, expected):
         mock_anthropic.return_value = mock_client
         mock_client.messages.create.return_value = mock_resp
 
-        import asyncio
-        score = asyncio.get_event_loop().run_until_complete(
+        score = asyncio.run(
             evaluate_subtask(
                 prompt="タスク",
                 result="結果",

@@ -127,7 +127,7 @@ def test_coordinator_completes_task(db):
             return_value=MagicMock(status_code=200, text="サブタスクの実行結果")
         )
 
-        asyncio.get_event_loop().run_until_complete(run_coordinator(db, task))
+        asyncio.run(run_coordinator(db, task))
 
     db.refresh(task)
     assert task.status == "completed"
@@ -189,7 +189,7 @@ def test_coordinator_updates_subtask_score(db):
             return_value=MagicMock(status_code=200, text="実行結果テキスト")
         )
 
-        asyncio.get_event_loop().run_until_complete(run_coordinator(db, task))
+        asyncio.run(run_coordinator(db, task))
 
     subtasks = db.query(SubTask).filter(SubTask.task_id == task.task_id).all()
     assert len(subtasks) == 1

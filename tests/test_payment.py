@@ -28,7 +28,7 @@ def test_distribute_rewards_proportional():
     }
 
     with patch.dict(os.environ, {"PAYMENT_ENABLED": "false"}):
-        rewards = asyncio.get_event_loop().run_until_complete(
+        rewards = asyncio.run(
             distribute_rewards(
                 task_id="task-001",
                 scores=scores,
@@ -58,7 +58,7 @@ def test_distribute_rewards_zero_scores():
     }
 
     with patch.dict(os.environ, {"PAYMENT_ENABLED": "false"}):
-        rewards = asyncio.get_event_loop().run_until_complete(
+        rewards = asyncio.run(
             distribute_rewards(
                 task_id="task-002",
                 scores=scores,
@@ -85,7 +85,7 @@ def test_distribute_rewards_single_agent():
     wallets = {"agent1": "Wa11etAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}
 
     with patch.dict(os.environ, {"PAYMENT_ENABLED": "false"}):
-        rewards = asyncio.get_event_loop().run_until_complete(
+        rewards = asyncio.run(
             distribute_rewards(
                 task_id="task-003",
                 scores=scores,
@@ -107,7 +107,7 @@ def test_distribute_rewards_empty():
     from app.services.payment import distribute_rewards
 
     with patch.dict(os.environ, {"PAYMENT_ENABLED": "false"}):
-        rewards = asyncio.get_event_loop().run_until_complete(
+        rewards = asyncio.run(
             distribute_rewards(
                 task_id="task-004",
                 scores={},
