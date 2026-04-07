@@ -15,6 +15,9 @@ build/
 *.db
 *.sqlite3
 
+# Simulation output
+simulation_result.json
+
 # pytest
 .pytest_cache/
 .coverage

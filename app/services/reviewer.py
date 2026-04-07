@@ -9,11 +9,9 @@
 import json
 import logging
 
-import anthropic
+from app.services import llm as _llm
 
 logger = logging.getLogger(__name__)
-
-_CLAUDE_MODEL = "claude-sonnet-4-6"
 
 # risk_level ごとの重み付け（タスクのリスクレベルに応じた非対称損失の倍率）
 # - high: 見逃しペナルティを3倍重くする
@@ -76,7 +74,6 @@ async def evaluate_subtask(prompt: str, result: str, risk_level: str = "medium")
     Returns:
         0.0〜1.0 のスコア（1.0が最高品質）
     """
-    client = anthropic.Anthropic()
     system = _build_system_prompt(risk_level)
     user_message = (
         f"【サブタスク】\n{prompt}\n\n"
@@ -84,13 +81,7 @@ async def evaluate_subtask(prompt: str, result: str, risk_level: str = "medium")
     )
 
     try:
-        response = client.messages.create(
-            model=_CLAUDE_MODEL,
-            max_tokens=200,
-            system=system,
-            messages=[{"role": "user", "content": user_message}],
-        )
-        raw = response.content[0].text.strip()
+        raw = _llm.complete(system, user_message, max_tokens=200)
         data = json.loads(raw)
         score = float(data.get("score", 0.5))
     except (json.JSONDecodeError, ValueError, KeyError) as exc:

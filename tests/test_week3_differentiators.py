@@ -131,23 +131,13 @@ def test_causal_chain_entries_created(db):
     subtasks_resp = json.dumps([{"agent_name": "CausalAgent", "subtask": "サブタスク"}])
     review_score = '{"score": 0.7}'
 
-    with patch("app.services.coordinator.anthropic.Anthropic") as mock_anthropic, \
-         patch("app.services.reviewer.anthropic.Anthropic") as mock_reviewer_anthropic, \
+    with patch("app.services.llm.complete", side_effect=[
+            difficulty_resp,
+            subtasks_resp,
+            review_score,
+         ]), \
          patch("app.services.coordinator.httpx.AsyncClient") as mock_httpx, \
          patch.dict(os.environ, {"PAYMENT_ENABLED": "false"}):
-
-        mock_coord_client = MagicMock()
-        mock_anthropic.return_value = mock_coord_client
-        mock_coord_client.messages.create.side_effect = [
-            MagicMock(content=[MagicMock(text=difficulty_resp)]),
-            MagicMock(content=[MagicMock(text=subtasks_resp)]),
-        ]
-
-        mock_rev_client = MagicMock()
-        mock_reviewer_anthropic.return_value = mock_rev_client
-        mock_rev_client.messages.create.return_value = MagicMock(
-            content=[MagicMock(text=review_score)]
-        )
 
         mock_http_client = AsyncMock()
         mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_client)

@@ -99,25 +99,11 @@ def test_coordinator_completes_task(db):
     subtasks_resp = json.dumps([{"agent_name": "IntegrationAgent", "subtask": "サブタスク内容"}])
     review_score = '{"score": 0.8}'
 
-    with patch("app.services.coordinator.anthropic.Anthropic") as mock_anthropic, \
-         patch("app.services.reviewer.anthropic.Anthropic") as mock_reviewer_anthropic, \
+    with patch("app.services.llm.complete", side_effect=[
+            difficulty_resp, subtasks_resp, review_score
+         ]), \
          patch("app.services.coordinator.httpx.AsyncClient") as mock_httpx, \
          patch.dict(os.environ, {"PAYMENT_ENABLED": "false"}):
-
-        # coordinator 用の Claude モック（難易度 + 分解）
-        mock_coord_client = MagicMock()
-        mock_anthropic.return_value = mock_coord_client
-        mock_coord_client.messages.create.side_effect = [
-            MagicMock(content=[MagicMock(text=difficulty_resp)]),
-            MagicMock(content=[MagicMock(text=subtasks_resp)]),
-        ]
-
-        # reviewer 用の Claude モック（評価）
-        mock_rev_client = MagicMock()
-        mock_reviewer_anthropic.return_value = mock_rev_client
-        mock_rev_client.messages.create.return_value = MagicMock(
-            content=[MagicMock(text=review_score)]
-        )
 
         # httpx モック（ワーカーへの送信）
         mock_http_client = AsyncMock()
@@ -164,23 +150,11 @@ def test_coordinator_updates_subtask_score(db):
     subtasks_resp = json.dumps([{"agent_name": "ScoreAgent", "subtask": "スコアサブタスク"}])
     review_score = '{"score": 0.9}'
 
-    with patch("app.services.coordinator.anthropic.Anthropic") as mock_anthropic, \
-         patch("app.services.reviewer.anthropic.Anthropic") as mock_reviewer_anthropic, \
+    with patch("app.services.llm.complete", side_effect=[
+            difficulty_resp, subtasks_resp, review_score
+         ]), \
          patch("app.services.coordinator.httpx.AsyncClient") as mock_httpx, \
          patch.dict(os.environ, {"PAYMENT_ENABLED": "false"}):
-
-        mock_coord_client = MagicMock()
-        mock_anthropic.return_value = mock_coord_client
-        mock_coord_client.messages.create.side_effect = [
-            MagicMock(content=[MagicMock(text=difficulty_resp)]),
-            MagicMock(content=[MagicMock(text=subtasks_resp)]),
-        ]
-
-        mock_rev_client = MagicMock()
-        mock_reviewer_anthropic.return_value = mock_rev_client
-        mock_rev_client.messages.create.return_value = MagicMock(
-            content=[MagicMock(text=review_score)]
-        )
 
         mock_http_client = AsyncMock()
         mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_client)

@@ -12,11 +12,24 @@
 import asyncio
 import json
 import logging
+import os
+import random
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.orm import Session
 
-from app.db.database import SessionLocal
+# シミュレーターはデフォルトでモックLLMを使用する
+# 実際のClaude APIやCLIを使いたい場合は LLM_BACKEND=api or cli を設定
+os.environ.setdefault("LLM_BACKEND", "mock")
+
+from app.db.database import Base, SessionLocal, engine
+from app.models import agent as _agent_models  # noqa: F401
+from app.models import causal_chain as _causal_chain_models  # noqa: F401
+from app.models import task as _task_models  # noqa: F401
 from app.models.agent import Agent
+
+# テーブルが存在しない場合は作成する
+Base.metadata.create_all(bind=engine)
 from app.schemas.task import TaskCreateRequest
 from app.services.coordinator import run_coordinator
 from app.services.task_service import create_task
@@ -150,16 +163,47 @@ async def run_simulation(
     # 初期スナップショット
     learning_curve.append(_snapshot_trust_scores(db, 0))
 
+    # エンドポイント→品質のマッピングを構築
+    endpoint_quality = {
+        a["endpoint"]: (a["quality"] if a["quality"] is not None else random.uniform(0.0, 1.0))
+        for a in DUMMY_AGENTS
+    }
+
+    def _make_httpx_mock():
+        """エンドポイントURLに基づいて品質タグ付きレスポンスを返すhttpxモック。"""
+        mock_http_client = AsyncMock()
+
+        async def _mock_post(url, **kwargs):
+            # URL からエンドポイントベース (scheme://host:port) を抽出
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            base = f"{parsed.scheme}://{parsed.netloc}"
+            quality = endpoint_quality.get(base, 0.5)
+            # NewAgent は毎回ランダム
+            if quality is None:
+                quality = random.uniform(0.0, 1.0)
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.text = f"QUALITY:{quality:.2f} result for task"
+            return resp
+
+        mock_http_client.post = _mock_post
+        return mock_http_client
+
     # 2. タスクをループ投入
     for i in range(n_tasks):
         prompt = _TASK_PROMPTS[i % len(_TASK_PROMPTS)]
         req = TaskCreateRequest(prompt=prompt, budget=0.1)
         task = create_task(db, req)
 
-        try:
-            await run_coordinator(db, task)
-        except Exception as exc:
-            logger.warning("Task %d failed: %s", i + 1, exc)
+        mock_http_client = _make_httpx_mock()
+        with patch("app.services.coordinator.httpx.AsyncClient") as mock_httpx:
+            mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_client)
+            mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
+            try:
+                await run_coordinator(db, task)
+            except Exception as exc:
+                logger.warning("Task %d failed: %s", i + 1, exc)
 
         # 3. trust_score スナップショット
         db.expire_all()  # DBから最新値を再取得
