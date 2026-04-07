@@ -78,6 +78,8 @@ def test_dashboard_agents_with_data(client):
         agent = _make_agent(db, name="HighQualityAgent", trust_score=0.82)
         task = _make_task(db, status="completed")
         _make_subtask(db, task_id=task.task_id, agent_id=agent.agent_id, score=0.9, reward=0.05)
+        agent_id = agent.agent_id
+        task_id = task.task_id
     finally:
         db.close()
 
@@ -86,7 +88,7 @@ def test_dashboard_agents_with_data(client):
     data = resp.json()
     assert len(data) == 1
     item = data[0]
-    assert item["agent_id"] == agent.agent_id
+    assert item["agent_id"] == agent_id
     assert item["name"] == "HighQualityAgent"
     assert abs(item["trust_score"] - 0.82) < 1e-6
     assert item["total_tasks"] == 1
@@ -94,7 +96,7 @@ def test_dashboard_agents_with_data(client):
     assert abs(item["avg_score"] - 0.9) < 1e-6
     assert len(item["task_history"]) == 1
     history = item["task_history"][0]
-    assert history["task_id"] == task.task_id
+    assert history["task_id"] == task_id
     assert abs(history["score"] - 0.9) < 1e-6
     assert abs(history["reward"] - 0.05) < 1e-6
 

@@ -11,3 +11,10 @@
 - 6件失敗（エンドポイント未実装のため404）、1件パス（test_dashboard_agent_not_found）
 - エラー: AssertionError: assert 404 == 200（/dashboard/agents, /dashboard/tasks が存在しない）
 - RED確認 OK
+
+### フェーズ2-C: GREEN（ダッシュボード）
+- app/schemas/dashboard.py 作成（AgentDashboardResponse, TaskDashboardResponse, TaskHistoryItem）
+- app/routers/dashboard.py 作成（/dashboard/agents, /dashboard/agents/{id}, /dashboard/tasks）
+- app/main.py に dashboard_router を登録
+- DetachedInstanceError: セッションclose後にagentを参照していた → agent_idをセッション内で取り出すよう修正
+- 全62件パス（既存55 + 新規7）GREEN確認 OK
