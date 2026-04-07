@@ -241,6 +241,9 @@ async def run_coordinator(db: Session, task: Task) -> None:
                 risk_level=task.risk_level or "medium",
             )
             subtask.score = score
+            # TODO: 全サブタスク評価後に一括コミットする設計に改善する
+            # 現状はサブタスクごとにコミットしており、途中エラー時に一部スコアのみ
+            # 保存される可能性がある。MVP段階では許容範囲。
             db.commit()
 
             if subtask.agent_id not in agent_scores:

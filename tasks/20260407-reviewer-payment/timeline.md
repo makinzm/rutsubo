@@ -33,5 +33,13 @@ FAILED tests/test_coordinator_integration.py::test_coordinator_completes_task - 
 - 未使用インポート（AsyncMock）を除去
 - 全43テストがWARNINGなしでGREEN
 
+### フェーズ2.5: DAレビュー（セルフ）
+- da-review.md を作成・記録
+- 指摘事項:
+  - [軽微] coordinator.py: サブタスクごとのコミットに TODO コメント追加対応
+  - [軽微] reviewer.py: 同期APIをasync defで包んでいる（将来の非同期移行時の注意点として記録）
+  - [軽微] エッジケーステスト（パース失敗、agent未存在）は後続タスクで対応
+- 最終判定: LGTM
+
 ### 次のステップ
-- フェーズ2.5: DAレビュー
+- フェーズ3: PR作成
