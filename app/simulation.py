@@ -17,10 +17,9 @@ from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
 from app.models.agent import Agent
-from app.models.task import Task
+from app.schemas.task import TaskCreateRequest
 from app.services.coordinator import run_coordinator
 from app.services.task_service import create_task
-from app.schemas.task import TaskCreateRequest
 
 logger = logging.getLogger(__name__)
 

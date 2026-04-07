@@ -29,3 +29,8 @@
 - app/simulation.py 作成（run_simulation async + run_simulation_sync 同期ラッパー + CLI）
 - DUMMY_AGENTS 4件定義（quality 0.9/0.6/0.3/None）
 - 全64件パス GREEN確認 OK
+
+### フェーズ2-D: REFACTOR
+- simulation.py: 未使用の Task インポートを削除、import 順を整理
+- dashboard.py: list_task_dashboard に N+1 問題の Note コメントを追加
+- 全64件パス REFACTOR確認 OK

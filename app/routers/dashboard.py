@@ -81,7 +81,12 @@ def get_agent_dashboard(agent_id: str, db: Session = Depends(get_db)):
 
 @router.get("/tasks", response_model=list[TaskDashboardResponse])
 def list_task_dashboard(db: Session = Depends(get_db)):
-    """タスク一覧と各タスクの因果連鎖サマリーを返す。"""
+    """タスク一覧と各タスクの因果連鎖サマリーを返す。
+
+    Note:
+        現状は causal_chain_count をタスクごとに個別クエリしている（N+1）。
+        タスク数が増えた場合は subquery/GROUP BY に最適化すること。
+    """
     tasks = db.query(Task).order_by(Task.created_at.desc()).all()
     result = []
     for task in tasks:
