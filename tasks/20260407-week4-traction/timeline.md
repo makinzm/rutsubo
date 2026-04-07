@@ -24,3 +24,8 @@
 - 2件失敗（ModuleNotFoundError: No module named 'app.simulation'）
 - asyncio_mode未設定のため async test から sync wrapper（run_simulation_sync）に変更
 - RED確認 OK
+
+### フェーズ2-C: GREEN（シミュレーター）
+- app/simulation.py 作成（run_simulation async + run_simulation_sync 同期ラッパー + CLI）
+- DUMMY_AGENTS 4件定義（quality 0.9/0.6/0.3/None）
+- 全64件パス GREEN確認 OK
