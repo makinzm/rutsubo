@@ -180,6 +180,46 @@ def decompose_task(prompt: str, agents: list[Agent]) -> list[dict[str, str]]:
 
 
 # ---------------------------------------------------------------------------
+# 因果連鎖エントリ記録
+# ---------------------------------------------------------------------------
+
+
+def _record_causal_entry(
+    db: Session,
+    *,
+    task_id: str,
+    layer: str,
+    agent_id: str | None = None,
+    score: float | None = None,
+    note: str | None = None,
+) -> CausalChainEntry:
+    """
+    因果連鎖エントリを DB に保存して返す。
+
+    Args:
+        db: DBセッション
+        task_id: 対象タスクのID
+        layer: レイヤー名（task_definition / coordinator / worker / reviewer）
+        agent_id: エージェントID（worker レイヤーの場合）
+        score: 評価スコア（0.0〜1.0）
+        note: 問題の説明（省略可）
+
+    Returns:
+        保存された CausalChainEntry
+    """
+    entry = CausalChainEntry(
+        task_id=task_id,
+        layer=layer,
+        agent_id=agent_id,
+        score=score,
+        note=note,
+    )
+    db.add(entry)
+    db.commit()
+    return entry
+
+
+# ---------------------------------------------------------------------------
 # ワーカーエージェントへの送信
 # ---------------------------------------------------------------------------
 
@@ -286,15 +326,13 @@ async def run_coordinator(db: Session, task: Task) -> None:
             db.commit()
 
             # 因果連鎖エントリを worker レイヤーとして記録
-            causal_entry = CausalChainEntry(
+            _record_causal_entry(
+                db,
                 task_id=task.task_id,
                 layer="worker",
                 agent_id=subtask.agent_id,
                 score=score,
-                note=None,
             )
-            db.add(causal_entry)
-            db.commit()
 
             if subtask.agent_id not in agent_scores:
                 agent_scores[subtask.agent_id] = []
