@@ -38,6 +38,8 @@ class SubTask(Base):
     prompt: Mapped[str] = mapped_column(String, nullable=False)
     status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
     result: Mapped[str | None] = mapped_column(String, nullable=True)
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reward: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
