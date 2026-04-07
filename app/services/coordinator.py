@@ -20,6 +20,8 @@ from sqlalchemy.orm import Session
 from app.models.agent import Agent
 from app.models.task import SubTask, Task
 from app.services import agent_service
+from app.services.payment import distribute_rewards
+from app.services.reviewer import evaluate_subtask
 from app.services.task_service import update_task_assessment, update_task_status
 
 logger = logging.getLogger(__name__)
@@ -222,6 +224,56 @@ async def run_coordinator(db: Session, task: Task) -> None:
 
         # 非同期で全エージェントに送信
         await asyncio.gather(*send_tasks, return_exceptions=True)
+
+        # 5. 各サブタスクの結果をレビュアーで評価
+        completed_subtasks = (
+            db.query(SubTask)
+            .filter(SubTask.task_id == task.task_id, SubTask.status == "completed")
+            .all()
+        )
+
+        # agent_id → score のマッピング（複数サブタスクがある場合は平均）
+        agent_scores: dict[str, list[float]] = {}
+        for subtask in completed_subtasks:
+            score = await evaluate_subtask(
+                prompt=subtask.prompt,
+                result=subtask.result or "",
+                risk_level=task.risk_level or "medium",
+            )
+            subtask.score = score
+            db.commit()
+
+            if subtask.agent_id not in agent_scores:
+                agent_scores[subtask.agent_id] = []
+            agent_scores[subtask.agent_id].append(score)
+
+        # エージェントごとのスコアを平均化
+        avg_scores = {
+            agent_id: sum(scores) / len(scores)
+            for agent_id, scores in agent_scores.items()
+        }
+
+        # 6. スコアに比例して budget を分配
+        wallets = {
+            a.agent_id: a.wallet_address
+            for a in selected
+            if a.agent_id in avg_scores
+        }
+        rewards = await distribute_rewards(
+            task_id=task.task_id,
+            scores=avg_scores,
+            wallets=wallets,
+            budget=task.budget,
+        )
+
+        # サブタスクに reward を記録
+        for subtask in completed_subtasks:
+            subtask.reward = rewards.get(subtask.agent_id)
+            db.commit()
+
+        # 7. 各エージェントの trust_score を更新
+        for agent_id, score in avg_scores.items():
+            agent_service.update_trust_score(db, agent_id, eval_score=score)
 
         update_task_status(db, task, "completed")
 

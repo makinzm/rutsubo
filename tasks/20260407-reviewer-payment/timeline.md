@@ -20,5 +20,13 @@ FAILED tests/test_coordinator_integration.py::test_coordinator_completes_task - 
 ...（14件すべてFAIL）
 ```
 
+### フェーズ2-C: GREEN フェーズ
+- app/models/task.py: SubTask に score/reward フィールドを追加
+- app/services/reviewer.py: evaluate_subtask 実装（非対称損失関数プロンプト）
+- app/services/payment.py: distribute_rewards 実装（スコア比例、PAYMENT_ENABLED対応）
+- app/services/agent_service.py: update_trust_score 追加（指数移動平均）
+- app/services/coordinator.py: 評価・分配・trust_score更新フローを統合
+- 全43テストがGREEN（新規14テスト含む）
+
 ### 次のステップ
-- フェーズ2-C: GREEN フェーズ（実装）
+- フェーズ2-D: REFACTOR フェーズ
