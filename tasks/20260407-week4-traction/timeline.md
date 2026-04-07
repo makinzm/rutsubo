@@ -18,3 +18,9 @@
 - app/main.py に dashboard_router を登録
 - DetachedInstanceError: セッションclose後にagentを参照していた → agent_idをセッション内で取り出すよう修正
 - 全62件パス（既存55 + 新規7）GREEN確認 OK
+
+### フェーズ2-B: RED（シミュレーター）
+- tests/test_simulation.py を作成
+- 2件失敗（ModuleNotFoundError: No module named 'app.simulation'）
+- asyncio_mode未設定のため async test から sync wrapper（run_simulation_sync）に変更
+- RED確認 OK
