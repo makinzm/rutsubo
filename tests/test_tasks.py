@@ -71,9 +71,10 @@ def test_create_task_success(client):
     assert "task_id" in data
     assert data["prompt"] == "テストタスク"
     assert data["budget"] == 0.1
+    # コーディネーターはバックグラウンド実行のため、レスポンス時点では pending / None が正常
     assert data["status"] == "pending"
-    assert data["difficulty"] in ("low", "medium", "high")
-    assert data["risk_level"] in ("low", "medium", "high")
+    assert "difficulty" in data
+    assert "risk_level" in data
     assert "created_at" in data
 
 
