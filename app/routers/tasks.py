@@ -3,7 +3,7 @@ import asyncio
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.db.database import get_db
+from app.db.database import SessionLocal, get_db
 from app.schemas.task import TaskCreateRequest, TaskResponse
 from app.services import agent_service
 from app.services.coordinator import run_coordinator
@@ -33,19 +33,27 @@ def create(
     task = create_task(db, req)
 
     # コーディネーターをバックグラウンドで非同期実行
-    background_tasks.add_task(_run_coordinator_sync, task.task_id, db)
+    # task_id のみ渡し、バックグラウンドタスク内で独立したDB Sessionを作成する
+    background_tasks.add_task(_run_coordinator_sync, task.task_id)
 
     return task
 
 
-def _run_coordinator_sync(task_id: str, db: Session) -> None:
-    """BackgroundTasks から asyncio コルーチンを呼び出すためのラッパー。"""
-    from app.services.task_service import get_task as _get_task
+def _run_coordinator_sync(task_id: str) -> None:
+    """
+    BackgroundTasks から asyncio コルーチンを呼び出すためのラッパー。
 
-    task = _get_task(db, task_id)
-    if task is None:
-        return
-    asyncio.run(run_coordinator(db, task))
+    レスポンス完了後にリクエストスコープのSessionが閉じられる可能性があるため、
+    バックグラウンドタスク内で独立したSessionを生成する。
+    """
+    db = SessionLocal()
+    try:
+        task = get_task(db, task_id)
+        if task is None:
+            return
+        asyncio.run(run_coordinator(db, task))
+    finally:
+        db.close()
 
 
 @router.get("/{task_id}", response_model=TaskResponse)

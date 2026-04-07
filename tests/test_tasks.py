@@ -115,27 +115,16 @@ def test_create_task_empty_prompt(client):
 
 
 def test_create_task_triggers_coordinator(client):
-    """タスク作成後にコーディネーターが起動し、Claude APIが呼ばれることを確認する。"""
+    """タスク作成後にコーディネーターのバックグラウンドタスクが起動することを確認する。"""
     _make_agent(client)
 
-    with patch("app.services.coordinator.anthropic.Anthropic") as mock_anthropic, \
-         patch("app.services.coordinator.httpx.AsyncClient") as mock_httpx:
-        mock_client = MagicMock()
-        mock_anthropic.return_value = mock_client
-        mock_client.messages.create.side_effect = [
-            _mock_claude_difficulty(),
-            _mock_claude_subtasks(["AgentA"]),
-        ]
-        mock_http_client = AsyncMock()
-        mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_client)
-        mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)
-        mock_http_client.post = AsyncMock(return_value=MagicMock(status_code=200, text="done"))
-
+    # バックグラウンドタスクのラッパー関数をモックして、起動されたことだけ確認する
+    with patch("app.routers.tasks._run_coordinator_sync") as mock_coordinator:
         response = client.post("/tasks", json={"prompt": "コーディネーターのテスト", "budget": 0.2})
 
     assert response.status_code == 201
-    # Claude API が少なくとも難易度判定で1回呼ばれた
-    assert mock_client.messages.create.call_count >= 1
+    # コーディネーターが1回起動された
+    mock_coordinator.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

@@ -36,3 +36,9 @@
 - `_VALID_LEVELS`, `_CLAUDE_MODEL` 定数に切り出し
 - `assess_task` のフォールバックロジックを `_VALID_LEVELS` で統一
 - 実行結果: **29 passed**（変更なし）
+
+## DAレビュー — LGTM（修正後）
+- 指摘1（中）: `_run_coordinator_sync` でDB Session共有問題 → 独立したSessionを生成するよう修正
+- 指摘2（低）: `from typing import Literal` 未使用インポート削除
+- テスト修正: `test_create_task_triggers_coordinator` のモック戦略を変更
+- 再テスト結果: **29 passed**
