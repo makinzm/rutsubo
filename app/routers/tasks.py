@@ -4,6 +4,8 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal, get_db
+from app.models.causal_chain import CausalChainEntry
+from app.schemas.causal_chain import CausalChainEntryResponse
 from app.schemas.task import TaskCreateRequest, TaskResponse
 from app.services import agent_service
 from app.services.coordinator import run_coordinator
@@ -62,3 +64,23 @@ def get_task_by_id(task_id: str, db: Session = Depends(get_db)):
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     return task
+
+
+@router.get("/{task_id}/causal-chain", response_model=list[CausalChainEntryResponse])
+def get_causal_chain(task_id: str, db: Session = Depends(get_db)):
+    """
+    タスクの因果連鎖エントリを取得する。
+
+    タスクが存在しない場合は404を返す。
+    タスクが存在するがエントリがない場合は空のリストを返す。
+    """
+    task = get_task(db, task_id)
+    if task is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    entries = (
+        db.query(CausalChainEntry)
+        .filter(CausalChainEntry.task_id == task_id)
+        .order_by(CausalChainEntry.created_at)
+        .all()
+    )
+    return entries

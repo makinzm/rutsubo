@@ -3,21 +3,25 @@
 
 役割:
 1. Claude APIで難易度・リスクレベルを判定する
-2. ε-greedy でエージェントを選択する
+2. ε-greedy（焼きなまし）でエージェントを選択する
 3. Claude APIでサブタスクに分解する
 4. 各エージェントの endpoint に非同期でサブタスクを送信する
+5. 評価結果を因果連鎖エントリとして記録する
 """
 
 import asyncio
 import json
 import logging
+import math
 import random
 
 import anthropic
 import httpx
 from sqlalchemy.orm import Session
 
+from app.config import EPSILON_INITIAL, EPSILON_LAMBDA, EPSILON_MIN
 from app.models.agent import Agent
+from app.models.causal_chain import CausalChainEntry
 from app.models.task import SubTask, Task
 from app.services import agent_service
 from app.services.payment import distribute_rewards
@@ -26,8 +30,6 @@ from app.services.task_service import update_task_assessment, update_task_status
 
 logger = logging.getLogger(__name__)
 
-# ε-greedy の探索率（将来アニーリング可能な設計にするため定数として定義）
-DEFAULT_EPSILON = 0.2
 # 最大選択エージェント数
 MAX_AGENTS = 3
 # 難易度・リスクレベルの有効値
@@ -37,23 +39,54 @@ _CLAUDE_MODEL = "claude-sonnet-4-6"
 
 
 # ---------------------------------------------------------------------------
+# ε-greedy 焼きなまし
+# ---------------------------------------------------------------------------
+
+
+def compute_epsilon(n_tasks: int) -> float:
+    """
+    完了タスク数に基づいてεを計算する（焼きなまし）。
+
+    ε = max(EPSILON_MIN, EPSILON_INITIAL * exp(-EPSILON_LAMBDA * n_tasks))
+
+    Args:
+        n_tasks: これまでの完了タスク数
+
+    Returns:
+        0.05〜EPSILON_INITIAL の範囲のε値
+    """
+    eps = EPSILON_INITIAL * math.exp(-EPSILON_LAMBDA * n_tasks)
+    return max(EPSILON_MIN, eps)
+
+
+# ---------------------------------------------------------------------------
 # ε-greedy エージェント選択
 # ---------------------------------------------------------------------------
 
 
-def select_agents(agents: list[Agent], epsilon: float = DEFAULT_EPSILON) -> list[Agent]:
+def select_agents(agents: list[Agent], epsilon: float | None = None) -> list[Agent]:
     """
     ε-greedy でエージェントを選択する。
 
     - ε 確率でランダム選択（探索）
     - 1-ε 確率で trust_score 上位から選択（活用）
     - 選択数は min(len(agents), MAX_AGENTS)
+    - epsilon が None の場合はデフォルト値（EPSILON_INITIAL）を使用する
+
+    Args:
+        agents: 選択候補のエージェントリスト
+        epsilon: 探索率（0.0〜1.0）。None の場合はデフォルト値を使用
+
+    Returns:
+        選択されたエージェントのリスト
     """
     n = min(len(agents), MAX_AGENTS)
     if n == 0:
         return []
 
-    if random.random() < epsilon:
+    eps = epsilon if epsilon is not None else EPSILON_INITIAL
+
+    if random.random() < eps:
         # 探索: ランダムに n 件選ぶ
         return random.sample(agents, n)
     else:
@@ -147,6 +180,46 @@ def decompose_task(prompt: str, agents: list[Agent]) -> list[dict[str, str]]:
 
 
 # ---------------------------------------------------------------------------
+# 因果連鎖エントリ記録
+# ---------------------------------------------------------------------------
+
+
+def _record_causal_entry(
+    db: Session,
+    *,
+    task_id: str,
+    layer: str,
+    agent_id: str | None = None,
+    score: float | None = None,
+    note: str | None = None,
+) -> CausalChainEntry:
+    """
+    因果連鎖エントリを DB に保存して返す。
+
+    Args:
+        db: DBセッション
+        task_id: 対象タスクのID
+        layer: レイヤー名（task_definition / coordinator / worker / reviewer）
+        agent_id: エージェントID（worker レイヤーの場合）
+        score: 評価スコア（0.0〜1.0）
+        note: 問題の説明（省略可）
+
+    Returns:
+        保存された CausalChainEntry
+    """
+    entry = CausalChainEntry(
+        task_id=task_id,
+        layer=layer,
+        agent_id=agent_id,
+        score=score,
+        note=note,
+    )
+    db.add(entry)
+    db.commit()
+    return entry
+
+
+# ---------------------------------------------------------------------------
 # ワーカーエージェントへの送信
 # ---------------------------------------------------------------------------
 
@@ -193,9 +266,15 @@ async def run_coordinator(db: Session, task: Task) -> None:
             risk_level=assessment["risk_level"],
         )
 
-        # 2. 登録済みエージェントを取得してε-greedy選択
+        # 2. 登録済みエージェントを取得してε-greedy選択（焼きなまし）
         all_agents = agent_service.list_agents(db)
-        selected = select_agents(all_agents, epsilon=DEFAULT_EPSILON)
+        n_completed = (
+            db.query(Task)
+            .filter(Task.status == "completed")
+            .count()
+        )
+        epsilon = compute_epsilon(n_completed)
+        selected = select_agents(all_agents, epsilon=epsilon)
 
         # 3. サブタスクに分解
         subtask_defs = decompose_task(task.prompt, selected)
@@ -245,6 +324,15 @@ async def run_coordinator(db: Session, task: Task) -> None:
             # 現状はサブタスクごとにコミットしており、途中エラー時に一部スコアのみ
             # 保存される可能性がある。MVP段階では許容範囲。
             db.commit()
+
+            # 因果連鎖エントリを worker レイヤーとして記録
+            _record_causal_entry(
+                db,
+                task_id=task.task_id,
+                layer="worker",
+                agent_id=subtask.agent_id,
+                score=score,
+            )
 
             if subtask.agent_id not in agent_scores:
                 agent_scores[subtask.agent_id] = []
