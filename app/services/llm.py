@@ -59,7 +59,7 @@ def _complete_cli(system: str, user: str) -> str:
         input=prompt,
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=180,
     )
     if result.returncode != 0:
         raise RuntimeError(f"claude CLI error: {result.stderr.strip()}")

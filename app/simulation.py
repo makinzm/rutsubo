@@ -226,22 +226,53 @@ async def run_simulation(
         for a in DUMMY_AGENTS
     }
 
+    def _quality_response(quality: float, subtask: str) -> str:
+        """
+        品質レベルに応じた「それらしい回答テキスト」を生成する。
+
+        LLM_BACKEND=cli/api のときに Claude が実際に評価するため、
+        品質レベルが伝わるような意味のある文章を返す必要がある。
+        mock バックエンドのときは QUALITY:X タグが評価に使われる。
+        """
+        if quality >= 0.8:
+            return (
+                f"【完全な回答】{subtask}\n\n"
+                "要件をすべて満たす詳細な実装を提供します。"
+                "コードは最適化済みで、エッジケースも考慮しています。"
+                "テストケースも含め、本番環境で即使用可能な品質です。"
+                "計算量・空間計算量の分析も添付します。"
+                f" QUALITY:{quality:.2f}"
+            )
+        elif quality >= 0.5:
+            return (
+                f"【部分的な回答】{subtask}\n\n"
+                "基本的な要件は満たしていますが、一部最適化が不十分です。"
+                "主要なケースは動作しますが、エッジケースの処理が不完全です。"
+                f" QUALITY:{quality:.2f}"
+            )
+        else:
+            return (
+                f"【不完全な回答】{subtask}\n\n"
+                "要件の理解が不十分で、実装が不完全です。"
+                "多くのバグが含まれており、そのまま使用することはできません。"
+                f" QUALITY:{quality:.2f}"
+            )
+
     def _make_httpx_mock():
-        """エンドポイントURLに基づいて品質タグ付きレスポンスを返すhttpxモック。"""
+        """エンドポイントURLに基づいて品質に応じた回答テキストを返すhttpxモック。"""
         mock_http_client = AsyncMock()
 
         async def _mock_post(url, **kwargs):
-            # URL からエンドポイントベース (scheme://host:port) を抽出
             from urllib.parse import urlparse
             parsed = urlparse(url)
             base = f"{parsed.scheme}://{parsed.netloc}"
             quality = endpoint_quality.get(base, 0.5)
-            # NewAgent は毎回ランダム
             if quality is None:
                 quality = random.uniform(0.0, 1.0)
+            subtask = (kwargs.get("json") or {}).get("subtask", "タスク")
             resp = MagicMock()
             resp.status_code = 200
-            resp.text = f"QUALITY:{quality:.2f} result for task"
+            resp.text = _quality_response(quality, subtask)
             return resp
 
         mock_http_client.post = _mock_post
