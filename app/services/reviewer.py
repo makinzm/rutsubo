@@ -8,10 +8,13 @@
 
 import json
 import logging
+import re
 
 from app.services import llm as _llm
 
 logger = logging.getLogger(__name__)
+
+_JSON_RE = re.compile(r'\{[^{}]*"score"[^{}]*\}', re.DOTALL)
 
 # risk_level ごとの重み付け（タスクのリスクレベルに応じた非対称損失の倍率）
 # - high: 見逃しペナルティを3倍重くする
@@ -82,10 +85,17 @@ async def evaluate_subtask(prompt: str, result: str, risk_level: str = "medium")
 
     try:
         raw = _llm.complete(system, user_message, max_tokens=200)
-        data = json.loads(raw)
+        # CLIがMarkdownコードブロックや余分なテキストを返す場合に対応
+        # まず素のJSONを試み、失敗したら {"score": ...} を含むブロックを抽出する
+        candidate = raw.strip()
+        if not candidate.startswith("{"):
+            m = _JSON_RE.search(candidate)
+            if m:
+                candidate = m.group(0)
+        data = json.loads(candidate)
         score = float(data.get("score", 0.5))
     except (json.JSONDecodeError, ValueError, KeyError) as exc:
-        logger.warning("Failed to parse reviewer response: %s", exc)
+        logger.warning("Failed to parse reviewer response: %s | raw=%r", exc, raw[:200])
         score = 0.5  # パース失敗時はデフォルト
 
     # 0.0〜1.0 にクランプ

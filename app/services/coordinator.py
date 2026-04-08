@@ -114,7 +114,14 @@ def assess_task(prompt: str) -> dict[str, str]:
     )
     raw = _llm.complete(system, f"タスク: {prompt}", max_tokens=100)
     try:
-        data = json.loads(raw)
+        candidate = raw.strip()
+        if not candidate.startswith("{"):
+            # Markdownコードブロックや前置きテキストを除去
+            import re as _re
+            m = _re.search(r'\{[^{}]*"difficulty"[^{}]*\}', candidate, _re.DOTALL)
+            if m:
+                candidate = m.group(0)
+        data = json.loads(candidate)
     except json.JSONDecodeError:
         data = {}
 
@@ -155,7 +162,14 @@ def decompose_task(prompt: str, agents: list[Agent]) -> list[dict[str, str]]:
     )
     raw = _llm.complete(system, user_message, max_tokens=500)
     try:
-        subtasks = json.loads(raw)
+        candidate = raw.strip()
+        if not candidate.startswith("["):
+            # Markdownコードブロックや前置きテキストを除去してJSON配列を抽出
+            import re as _re
+            m = _re.search(r'\[.*\]', candidate, _re.DOTALL)
+            if m:
+                candidate = m.group(0)
+        subtasks = json.loads(candidate)
         if not isinstance(subtasks, list):
             raise ValueError("expected list")
     except (json.JSONDecodeError, ValueError):
