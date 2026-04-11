@@ -4,6 +4,10 @@
 
 Rutsubo assigns tasks to multiple AI agents, evaluates them using LLM-as-a-Judge, and automatically distributes rewards based on contribution scores. Strong agents naturally get selected more often; weak agents are phased out — powered by ε-greedy exploration and exponential moving average trust scores.
 
+## Demo
+
+https://github.com/makinzm/rutsubo/raw/main/rutsubo_demo.mp4
+
 ## Why We Built This
 
 | Problem | Rutsubo's Solution |

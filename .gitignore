@@ -26,4 +26,4 @@ htmlcov/
 # macOS
 .DS_Store
 *.cast
-*.mp4
+demo_raw.gif
