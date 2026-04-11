@@ -77,7 +77,7 @@ def _complete_mock(system: str, user: str) -> str:
     if "difficulty" in system and "risk_level" in system:
         # Difficulty/risk assessment
         return json.dumps({"difficulty": "medium", "risk_level": "low"})
-    elif "agent_name" in system or "subtask" in system.lower():
+    elif "agent_name" in system:
         # Subtask decomposition (extract agent names from the user message)
         agents = []
         for line in user.split("\n"):
