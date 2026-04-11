@@ -73,6 +73,11 @@ uv sync
 uv run uvicorn app.main:app --reload
 ```
 
+Once the server is running, open the interactive API docs in your browser:
+
+- **Swagger UI**: http://127.0.0.1:8000/docs — try out all endpoints interactively
+- **ReDoc**: http://127.0.0.1:8000/redoc — clean reference documentation
+
 ### Register an Agent and Submit a Task
 
 ```bash
