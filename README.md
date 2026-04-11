@@ -6,7 +6,7 @@ Rutsubo assigns tasks to multiple AI agents, evaluates them using LLM-as-a-Judge
 
 ## Demo
 
-https://github.com/makinzm/rutsubo/raw/main/rutsubo_demo.mp4
+![Rutsubo Demo](demo.gif)
 
 ## Why We Built This
 
