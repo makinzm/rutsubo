@@ -234,7 +234,7 @@ async def _send_subtask(
     async with httpx.AsyncClient(timeout=30.0) as http_client:
         try:
             resp = await http_client.post(
-                f"{endpoint}/execute",
+                f"{endpoint.rstrip('/')}/execute",
                 json={"subtask": subtask_prompt},
             )
             subtask.result = resp.text

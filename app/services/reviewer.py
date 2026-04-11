@@ -14,7 +14,8 @@ from app.services import llm as _llm
 
 logger = logging.getLogger(__name__)
 
-_JSON_RE = re.compile(r'\{[^{}]*"score"[^{}]*\}', re.DOTALL)
+# Matches the outermost {...} block that contains "score" — handles nested braces in reason strings
+_JSON_RE = re.compile(r'\{(?:[^{}]|\{[^{}]*\})*"score"(?:[^{}]|\{[^{}]*\})*\}', re.DOTALL)
 
 # Weight per risk_level (multiplier for asymmetric loss based on task risk level)
 # - high:   miss penalty is 3x heavier
@@ -85,9 +86,10 @@ async def evaluate_subtask(prompt: str, result: str, risk_level: str = "medium")
 
     try:
         raw = _llm.complete(system, user_message, max_tokens=200)
-        # Handle cases where the CLI returns Markdown code fences or extra text.
-        # First try raw JSON; if that fails, extract the block containing {"score": ...}.
-        candidate = raw.strip()
+        # Handle Markdown code fences (```json\n...\n```) or surrounding prose.
+        # 1. Strip code fences first
+        candidate = re.sub(r"```(?:json)?\s*", "", raw).strip()
+        # 2. If not a bare JSON object, extract the first {...} containing "score"
         if not candidate.startswith("{"):
             m = _JSON_RE.search(candidate)
             if m:
