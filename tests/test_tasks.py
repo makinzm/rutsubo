@@ -49,15 +49,13 @@ def test_create_task_success(client):
     """正常なデータでタスクを作成すると 201 と task 情報を返す。"""
     _make_agent(client)
 
-    with patch("app.services.coordinator.anthropic.Anthropic") as mock_anthropic, \
+    import json as _json
+    subtasks_json = _json.dumps([{"agent_name": "AgentA", "subtask": "AgentAへのサブタスク"}])
+    with patch("app.services.llm.complete", side_effect=[
+            '{"difficulty": "medium", "risk_level": "low"}',
+            subtasks_json,
+         ]), \
          patch("app.services.coordinator.httpx.AsyncClient") as mock_httpx:
-        # Claude APIのモック設定
-        mock_client = MagicMock()
-        mock_anthropic.return_value = mock_client
-        mock_client.messages.create.side_effect = [
-            _mock_claude_difficulty(),
-            _mock_claude_subtasks(["AgentA"]),
-        ]
         # httpx のモック設定（非同期）
         mock_http_client = AsyncMock()
         mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_client)
@@ -80,7 +78,7 @@ def test_create_task_success(client):
 
 def test_create_task_no_agents(client):
     """エージェントが0件のとき 400 Bad Request を返す。"""
-    with patch("app.services.coordinator.anthropic.Anthropic"):
+    with patch("app.services.llm.complete", return_value='{"difficulty": "medium", "risk_level": "low"}'):
         response = client.post("/tasks", json={"prompt": "タスク", "budget": 0.05})
 
     assert response.status_code == 400
@@ -136,14 +134,13 @@ def test_get_task_success(client):
     """存在する task_id でタスクを取得すると 200 と正しい情報を返す。"""
     _make_agent(client)
 
-    with patch("app.services.coordinator.anthropic.Anthropic") as mock_anthropic, \
+    import json as _json
+    subtasks_json = _json.dumps([{"agent_name": "AgentA", "subtask": "AgentAへのサブタスク"}])
+    with patch("app.services.llm.complete", side_effect=[
+            '{"difficulty": "medium", "risk_level": "low"}',
+            subtasks_json,
+         ]), \
          patch("app.services.coordinator.httpx.AsyncClient") as mock_httpx:
-        mock_client = MagicMock()
-        mock_anthropic.return_value = mock_client
-        mock_client.messages.create.side_effect = [
-            _mock_claude_difficulty(),
-            _mock_claude_subtasks(["AgentA"]),
-        ]
         mock_http_client = AsyncMock()
         mock_httpx.return_value.__aenter__ = AsyncMock(return_value=mock_http_client)
         mock_httpx.return_value.__aexit__ = AsyncMock(return_value=False)

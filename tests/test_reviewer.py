@@ -50,14 +50,7 @@ def test_reviewer_returns_score():
     """Claude API をモックして evaluate_subtask が float スコアを返すことを確認する。"""
     from app.services.reviewer import evaluate_subtask
 
-    mock_resp = MagicMock()
-    mock_resp.content = [MagicMock(text='{"score": 0.85}')]
-
-    with patch("app.services.reviewer.anthropic.Anthropic") as mock_anthropic:
-        mock_client = MagicMock()
-        mock_anthropic.return_value = mock_client
-        mock_client.messages.create.return_value = mock_resp
-
+    with patch("app.services.llm.complete", return_value='{"score": 0.85}'):
         score = asyncio.run(
             evaluate_subtask(
                 prompt="Pythonでfizzbuzzを実装してください",
@@ -86,14 +79,7 @@ def test_reviewer_score_range(raw_score, expected):
     """Claude APIが返すスコアが0.0〜1.0の範囲にクランプされることを確認する。"""
     from app.services.reviewer import evaluate_subtask
 
-    mock_resp = MagicMock()
-    mock_resp.content = [MagicMock(text=f'{{"score": {raw_score}}}')]
-
-    with patch("app.services.reviewer.anthropic.Anthropic") as mock_anthropic:
-        mock_client = MagicMock()
-        mock_anthropic.return_value = mock_client
-        mock_client.messages.create.return_value = mock_resp
-
+    with patch("app.services.llm.complete", return_value=f'{{"score": {raw_score}}}'):
         score = asyncio.run(
             evaluate_subtask(
                 prompt="タスク",

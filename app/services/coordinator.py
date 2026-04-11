@@ -15,11 +15,11 @@ import logging
 import math
 import random
 
-import anthropic
 import httpx
 from sqlalchemy.orm import Session
 
 from app.config import EPSILON_INITIAL, EPSILON_LAMBDA, EPSILON_MIN
+from app.services import llm as _llm
 from app.models.agent import Agent
 from app.models.causal_chain import CausalChainEntry
 from app.models.task import SubTask, Task
@@ -101,27 +101,27 @@ def select_agents(agents: list[Agent], epsilon: float | None = None) -> list[Age
 
 def assess_task(prompt: str) -> dict[str, str]:
     """
-    タスクの難易度（difficulty）とリスクレベル（risk_level）を Claude API で判定する。
+    タスクの難易度（difficulty）とリスクレベル（risk_level）を LLM で判定する。
 
     Returns:
         {"difficulty": "low"|"medium"|"high", "risk_level": "low"|"medium"|"high"}
     """
-    client = anthropic.Anthropic()
     system = (
         "あなたはタスク評価AIです。ユーザーのタスク内容を分析して、"
         "difficulty（low/medium/high）と risk_level（low/medium/high）を"
         "必ずJSON形式のみで返してください。"
         '例: {"difficulty": "medium", "risk_level": "low"}'
     )
-    response = client.messages.create(
-        model=_CLAUDE_MODEL,
-        max_tokens=100,
-        system=system,
-        messages=[{"role": "user", "content": f"タスク: {prompt}"}],
-    )
-    raw = response.content[0].text.strip()
+    raw = _llm.complete(system, f"タスク: {prompt}", max_tokens=100)
     try:
-        data = json.loads(raw)
+        candidate = raw.strip()
+        if not candidate.startswith("{"):
+            # Markdownコードブロックや前置きテキストを除去
+            import re as _re
+            m = _re.search(r'\{[^{}]*"difficulty"[^{}]*\}', candidate, _re.DOTALL)
+            if m:
+                candidate = m.group(0)
+        data = json.loads(candidate)
     except json.JSONDecodeError:
         data = {}
 
@@ -148,7 +148,6 @@ def decompose_task(prompt: str, agents: list[Agent]) -> list[dict[str, str]]:
     Returns:
         [{"agent_name": "...", "subtask": "..."}, ...]
     """
-    client = anthropic.Anthropic()
     agent_profiles = "\n".join(
         f"- {a.name}: {a.description}" for a in agents
     )
@@ -161,15 +160,16 @@ def decompose_task(prompt: str, agents: list[Agent]) -> list[dict[str, str]]:
         f"タスク: {prompt}\n\n"
         f"利用可能なエージェント:\n{agent_profiles}"
     )
-    response = client.messages.create(
-        model=_CLAUDE_MODEL,
-        max_tokens=500,
-        system=system,
-        messages=[{"role": "user", "content": user_message}],
-    )
-    raw = response.content[0].text.strip()
+    raw = _llm.complete(system, user_message, max_tokens=500)
     try:
-        subtasks = json.loads(raw)
+        candidate = raw.strip()
+        if not candidate.startswith("["):
+            # Markdownコードブロックや前置きテキストを除去してJSON配列を抽出
+            import re as _re
+            m = _re.search(r'\[.*\]', candidate, _re.DOTALL)
+            if m:
+                candidate = m.group(0)
+        subtasks = json.loads(candidate)
         if not isinstance(subtasks, list):
             raise ValueError("expected list")
     except (json.JSONDecodeError, ValueError):
