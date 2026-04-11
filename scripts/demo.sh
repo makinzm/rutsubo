@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Rutsubo Demo Script — colorized, narrative-driven walkthrough
+# LLM_BACKEND=cli: real Claude evaluates every subtask result
 
 set -e
 
 BASE_URL="http://127.0.0.1:8000"
 DB_FILE="rutsubo_demo.db"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+LLM_BACKEND="${LLM_BACKEND:-cli}"
 
 # ── colors ──────────────────────────────────────────────────────────────────
 BOLD='\033[1m'
@@ -100,8 +102,8 @@ W2_PID=$!
 uv run python "$SCRIPT_DIR/mock_worker.py" 8103 0.25 "WeakAgent" &
 W3_PID=$!
 
-info "Launching Rutsubo coordinator server..."
-DATABASE_URL="sqlite:///./$DB_FILE" LLM_BACKEND=mock \
+info "Launching Rutsubo coordinator server (LLM_BACKEND=$LLM_BACKEND)..."
+DATABASE_URL="sqlite:///./$DB_FILE" LLM_BACKEND="$LLM_BACKEND" \
   uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level error &
 MAIN_PID=$!
 
@@ -195,14 +197,20 @@ slow_pause 4
 section "Step 3 — Coordinator Processing"
 
 echo -e "  ${DIM}Dispatching subtasks to selected agents...${RESET}"
+echo -e "  ${DIM}Claude is now evaluating each result (LLM-as-a-Judge)...${RESET}"
 echo ""
 
-for i in 1 2 3 4 5; do
+SPINNER=('⠋' '⠙' '⠹' '⠸' '⠼' '⠴' '⠦' '⠧' '⠇' '⠏')
+STATUS="pending"
+ELAPSED=0
+while [ "$STATUS" != "completed" ] && [ "$STATUS" != "failed" ] && [ $ELAPSED -lt 180 ]; do
+  IDX=$((ELAPSED % ${#SPINNER[@]}))
+  printf "\r  ${CYAN}%s${RESET} Waiting for Claude evaluation... (%ds)" "${SPINNER[$IDX]}" "$ELAPSED"
   sleep 1
+  ELAPSED=$((ELAPSED + 1))
   STATUS=$(curl -sf "$BASE_URL/tasks/$TASK_ID" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null || echo "pending")
-  printf "  [%d/5] status: %s\n" "$i" "$STATUS"
-  [ "$STATUS" = "completed" ] && break
 done
+printf "\r  %-60s\n" ""
 
 echo ""
 FINAL=$(curl -sf "$BASE_URL/tasks/$TASK_ID")
@@ -276,25 +284,37 @@ slow_pause 4
 # ─────────────────────────────────────────────────────────────────────────────
 section "Step 6 — Natural Selection in Action"
 
-echo -e "  ${DIM}Submitting more tasks to show trust scores evolving...${RESET}"
+echo -e "  ${DIM}Submitting one more task to show trust score evolution...${RESET}"
 echo ""
 
-for i in 1 2 3; do
-  info "Task $i/3..."
-  PROMPTS=(
-    "Design a data pipeline for processing real-time sensor data"
-    "Write a secure authentication module with JWT tokens"
-    "Create a caching layer with TTL and eviction policies"
-  )
-  curl -sf -X POST "$BASE_URL/tasks" \
-    -H "Content-Type: application/json" \
-    -d "{\"prompt\": \"${PROMPTS[$((i-1))]}\", \"budget\": 0.05}" > /dev/null
-  sleep 3
-  success "Done"
+info "Task 2/2..."
+curl -sf -X POST "$BASE_URL/tasks" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Write a secure authentication module with JWT tokens and refresh token rotation", "budget": 0.05}' > /dev/null
+
+ELAPSED=0
+STATUS2="pending"
+TASK2_ID=$(curl -sf "$BASE_URL/dashboard/tasks" | python3 -c "
+import sys,json
+tasks=json.load(sys.stdin)
+pending=[t for t in tasks if t.get('status')=='pending']
+print(pending[-1]['task_id'] if pending else '')
+" 2>/dev/null || echo "")
+
+while [ "$STATUS2" != "completed" ] && [ "$STATUS2" != "failed" ] && [ $ELAPSED -lt 180 ]; do
+  IDX=$((ELAPSED % ${#SPINNER[@]}))
+  printf "\r  ${CYAN}%s${RESET} Claude evaluating second task... (%ds)" "${SPINNER[$IDX]}" "$ELAPSED"
+  sleep 1
+  ELAPSED=$((ELAPSED + 1))
+  if [ -n "$TASK2_ID" ]; then
+    STATUS2=$(curl -sf "$BASE_URL/tasks/$TASK2_ID" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null || echo "pending")
+  fi
 done
+printf "\r  %-60s\n" ""
+success "Done"
 
 echo ""
-echo -e "  ${BOLD}Updated trust scores after 4 tasks:${RESET}"
+echo -e "  ${BOLD}Updated trust scores after 2 tasks:${RESET}"
 echo ""
 
 curl -sf "$BASE_URL/dashboard/agents" | python3 -c "
