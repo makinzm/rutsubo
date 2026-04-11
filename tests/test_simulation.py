@@ -1,8 +1,8 @@
 """
-シミュレーターのテスト。
+Simulator tests.
 
-test_simulation_registers_agents  — 実行でエージェントが登録される
-test_simulation_output_format     — 出力JSONに learning_curve キーがある
+test_simulation_registers_agents  — agents are registered after a simulation run
+test_simulation_output_format     — output JSON contains the 'learning_curve' key
 """
 
 import json
@@ -11,12 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
-# helpers — Claude API モックレスポンス
+# Helpers — Claude API mock responses
 # ---------------------------------------------------------------------------
 
 
 def _make_claude_assess_response(difficulty="medium", risk_level="medium"):
-    """assess_task 用の Claude API モックレスポンス。"""
+    """Mock Claude API response for assess_task."""
     mock_resp = MagicMock()
     mock_resp.content = [MagicMock()]
     mock_resp.content[0].text = json.dumps(
@@ -26,7 +26,7 @@ def _make_claude_assess_response(difficulty="medium", risk_level="medium"):
 
 
 def _make_claude_decompose_response(agent_names: list[str], subtask: str = "do the task"):
-    """decompose_task 用の Claude API モックレスポンス。"""
+    """Mock Claude API response for decompose_task."""
     mock_resp = MagicMock()
     mock_resp.content = [MagicMock()]
     mock_resp.content[0].text = json.dumps(
@@ -36,7 +36,7 @@ def _make_claude_decompose_response(agent_names: list[str], subtask: str = "do t
 
 
 def _make_claude_review_response(score: float = 0.7):
-    """evaluate_subtask 用の Claude API モックレスポンス。"""
+    """Mock Claude API response for evaluate_subtask."""
     mock_resp = MagicMock()
     mock_resp.content = [MagicMock()]
     mock_resp.content[0].text = json.dumps({"score": score, "reason": "mock review"})
@@ -44,12 +44,12 @@ def _make_claude_review_response(score: float = 0.7):
 
 
 # ---------------------------------------------------------------------------
-# tests
+# Tests
 # ---------------------------------------------------------------------------
 
 
 def test_simulation_registers_agents(tmp_path):
-    """シミュレーター実行後、4エージェントがDBに登録されている。"""
+    """After a simulation run, exactly 4 agents are registered in the DB."""
     from app.db.database import Base
     from tests.conftest import TestingSessionLocal, test_engine
 
@@ -67,9 +67,8 @@ def test_simulation_registers_agents(tmp_path):
             _make_claude_assess_response(),
             _make_claude_decompose_response(["HighQualityAgent"]),
             _make_claude_review_response(0.9),
-        ] * 20  # 20タスク分余裕を持たせる
+        ] * 20  # enough for 20 tasks
 
-        # httpx.AsyncClient のモック（ワーカーへの送信）
         mock_http_instance = AsyncMock()
         mock_httpx_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http_instance)
         mock_httpx_cls.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -80,7 +79,6 @@ def test_simulation_registers_agents(tmp_path):
         from app.simulation import run_simulation_sync
         run_simulation_sync(db=db, n_tasks=1, output_file=output_file)
 
-    # 4エージェントが登録されていることを確認
     from app.models.agent import Agent
     agents = db.query(Agent).all()
     agent_names = {a.name for a in agents}
@@ -96,7 +94,7 @@ def test_simulation_registers_agents(tmp_path):
 
 
 def test_simulation_output_format(tmp_path):
-    """シミュレーター出力JSONに learning_curve キーがある。"""
+    """The simulation output JSON contains a 'learning_curve' key with the expected structure."""
     from app.db.database import Base
     from tests.conftest import TestingSessionLocal, test_engine
 
@@ -136,7 +134,7 @@ def test_simulation_output_format(tmp_path):
 
     assert "learning_curve" in result
     assert isinstance(result["learning_curve"], list)
-    # learning_curve の各要素に task_index と agent trust scores が含まれる
+    # Each learning_curve entry must contain task_index and agent trust scores
     for entry in result["learning_curve"]:
         assert "task_index" in entry
         assert "agent_trust_scores" in entry
