@@ -1,9 +1,9 @@
 """
-ダッシュボードAPIのテスト。
+Dashboard API tests.
 
-GET /dashboard/agents — 全エージェントの信頼スコア・報酬履歴集計
-GET /dashboard/agents/{agent_id} — 特定エージェントの詳細
-GET /dashboard/tasks — タスク一覧＋因果連鎖サマリー
+GET /dashboard/agents  — aggregated trust scores and reward history for all agents
+GET /dashboard/agents/{agent_id} — detail view for a specific agent
+GET /dashboard/tasks   — task list with causal chain summary
 """
 
 import pytest
@@ -17,7 +17,7 @@ from tests.conftest import TestingSessionLocal, test_engine
 
 
 # ---------------------------------------------------------------------------
-# helpers
+# Helpers
 # ---------------------------------------------------------------------------
 
 
@@ -65,14 +65,14 @@ def _make_subtask(db, *, task_id, agent_id, score=None, reward=None, status="com
 
 
 def test_dashboard_agents_empty(client):
-    """エージェント0件のとき 200 で空配列を返す。"""
+    """Returns 200 with an empty array when no agents exist."""
     resp = client.get("/dashboard/agents")
     assert resp.status_code == 200
     assert resp.json() == []
 
 
 def test_dashboard_agents_with_data(client):
-    """エージェント・タスク・サブタスクがあるとき集計値が正しい。"""
+    """Returns correct aggregate values when agents, tasks, and subtasks exist."""
     db = TestingSessionLocal()
     try:
         agent = _make_agent(db, name="HighQualityAgent", trust_score=0.82)
@@ -102,7 +102,7 @@ def test_dashboard_agents_with_data(client):
 
 
 def test_dashboard_agents_multiple_subtasks(client):
-    """複数サブタスクがあるとき avg_score と total_reward が正しく集計される。"""
+    """avg_score and total_reward are correctly aggregated across multiple subtasks."""
     db = TestingSessionLocal()
     try:
         agent = _make_agent(db, name="AgentA", trust_score=0.7)
@@ -129,7 +129,7 @@ def test_dashboard_agents_multiple_subtasks(client):
 
 
 def test_dashboard_agent_detail(client):
-    """特定エージェントの詳細が取得できる。"""
+    """Returns correct detail for a specific agent."""
     db = TestingSessionLocal()
     try:
         agent = _make_agent(db, name="DetailAgent", trust_score=0.75)
@@ -150,7 +150,7 @@ def test_dashboard_agent_detail(client):
 
 
 def test_dashboard_agent_not_found(client):
-    """存在しないagent_idで 404 を返す。"""
+    """Returns 404 for a non-existent agent_id."""
     resp = client.get("/dashboard/agents/nonexistent-id")
     assert resp.status_code == 404
 
@@ -161,19 +161,19 @@ def test_dashboard_agent_not_found(client):
 
 
 def test_dashboard_tasks_empty(client):
-    """タスク0件のとき 200 で空配列を返す。"""
+    """Returns 200 with an empty array when no tasks exist."""
     resp = client.get("/dashboard/tasks")
     assert resp.status_code == 200
     assert resp.json() == []
 
 
 def test_dashboard_tasks(client):
-    """タスク一覧が取得できる。各タスクにstatus・causal_chain_countが含まれる。"""
+    """Task list includes status and causal_chain_count for each task."""
     db = TestingSessionLocal()
     try:
         task1 = _make_task(db, prompt="task one", status="completed")
         task2 = _make_task(db, prompt="task two", status="pending")
-        # task1 に因果連鎖エントリを2件追加
+        # Add 2 causal chain entries to task1
         entry1 = CausalChainEntry(task_id=task1.task_id, layer="worker", score=0.8)
         entry2 = CausalChainEntry(task_id=task1.task_id, layer="coordinator", score=0.9)
         db.add(entry1)

@@ -1,7 +1,7 @@
 """
-エージェント登録 API のテスト。
+Agent registration API tests.
 
-各テストは独立したインメモリ SQLite セッションで実行される。
+Each test runs in an independent in-memory SQLite session.
 """
 
 import pytest
@@ -13,10 +13,10 @@ import pytest
 
 
 def test_register_agent_success(client):
-    """正常なデータでエージェントを登録できる。"""
+    """A valid payload registers an agent successfully."""
     payload = {
         "name": "TestAgent",
-        "description": "コード生成が得意なエージェント",
+        "description": "An agent that specializes in code generation",
         "wallet_address": "So1anaWa11etAddressXXXXXXXXXXXXXXXXXXXXXXX",
         "endpoint": "https://example.com/agent",
     }
@@ -26,7 +26,7 @@ def test_register_agent_success(client):
     data = response.json()
     assert "agent_id" in data
     assert data["name"] == "TestAgent"
-    assert data["description"] == "コード生成が得意なエージェント"
+    assert data["description"] == "An agent that specializes in code generation"
     assert data["wallet_address"] == "So1anaWa11etAddressXXXXXXXXXXXXXXXXXXXXXXX"
     assert data["endpoint"] == "https://example.com/agent"
     assert data["trust_score"] == 0.5
@@ -34,10 +34,10 @@ def test_register_agent_success(client):
 
 
 def test_register_agent_duplicate_name(client):
-    """同じ名前で二重登録すると 409 Conflict を返す。"""
+    """Registering an agent with a duplicate name returns 409 Conflict."""
     payload = {
         "name": "DuplicateAgent",
-        "description": "テスト用エージェント",
+        "description": "Test agent",
         "wallet_address": "So1anaWa11etAddressXXXXXXXXXXXXXXXXXXXXXXX",
         "endpoint": "https://example.com/agent",
     }
@@ -48,10 +48,10 @@ def test_register_agent_duplicate_name(client):
 
 
 def test_register_agent_invalid_wallet(client):
-    """wallet_address が空文字の場合は 422 を返す。"""
+    """An empty wallet_address returns 422."""
     payload = {
         "name": "AgentWithEmptyWallet",
-        "description": "テスト用",
+        "description": "Test agent",
         "wallet_address": "",
         "endpoint": "https://example.com/agent",
     }
@@ -61,10 +61,10 @@ def test_register_agent_invalid_wallet(client):
 
 
 def test_register_agent_whitespace_wallet(client):
-    """wallet_address が空白のみの場合は 422 を返す。"""
+    """A whitespace-only wallet_address returns 422."""
     payload = {
         "name": "AgentWithWhitespaceWallet",
-        "description": "テスト用",
+        "description": "Test agent",
         "wallet_address": "   ",
         "endpoint": "https://example.com/agent",
     }
@@ -74,10 +74,10 @@ def test_register_agent_whitespace_wallet(client):
 
 
 def test_register_agent_invalid_endpoint(client):
-    """endpoint が URL 形式でない場合は 422 を返す。"""
+    """A non-URL endpoint returns 422."""
     payload = {
         "name": "AgentWithBadEndpoint",
-        "description": "テスト用",
+        "description": "Test agent",
         "wallet_address": "So1anaWa11etAddressXXXXXXXXXXXXXXXXXXXXXXX",
         "endpoint": "not-a-url",
     }
@@ -87,10 +87,10 @@ def test_register_agent_invalid_endpoint(client):
 
 
 def test_register_agent_missing_fields(client):
-    """必須フィールドが欠落している場合は 422 を返す。"""
+    """Missing required fields returns 422."""
     payload = {
         "name": "IncompleteAgent",
-        # description, wallet_address, endpoint が欠落
+        # description, wallet_address, endpoint are missing
     }
     response = client.post("/agents/register", json=payload)
 
@@ -98,11 +98,11 @@ def test_register_agent_missing_fields(client):
 
 
 def test_register_agent_invalid_wallet_bad_chars(client):
-    """Base58 として無効な文字（0, O, I, l）を含む wallet_address は 422 を返す。"""
+    """A wallet_address containing invalid Base58 characters (0, O, I, l) returns 422."""
     payload = {
         "name": "AgentBadCharsWallet",
-        "description": "テスト用",
-        "wallet_address": "0OIlAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",  # 無効文字含む
+        "description": "Test agent",
+        "wallet_address": "0OIlAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",  # invalid chars
         "endpoint": "https://example.com/agent",
     }
     response = client.post("/agents/register", json=payload)
@@ -111,11 +111,11 @@ def test_register_agent_invalid_wallet_bad_chars(client):
 
 
 def test_register_agent_wallet_too_short(client):
-    """wallet_address が32文字未満の場合は 422 を返す。"""
+    """A wallet_address shorter than 32 characters returns 422."""
     payload = {
         "name": "AgentShortWallet",
-        "description": "テスト用",
-        "wallet_address": "So1anaWa11etXXXXXXXXXXXXXXXXXXX",  # 31文字
+        "description": "Test agent",
+        "wallet_address": "So1anaWa11etXXXXXXXXXXXXXXXXXXX",  # 31 chars
         "endpoint": "https://example.com/agent",
     }
     response = client.post("/agents/register", json=payload)
@@ -124,10 +124,10 @@ def test_register_agent_wallet_too_short(client):
 
 
 def test_register_agent_name_too_long(client):
-    """name が100文字を超える場合は 422 を返す。"""
+    """A name longer than 100 characters returns 422."""
     payload = {
         "name": "A" * 101,
-        "description": "テスト用",
+        "description": "Test agent",
         "wallet_address": "So1anaWa11etAddressXXXXXXXXXXXXXXXXXXXXXXX",
         "endpoint": "https://example.com/agent",
     }
@@ -137,7 +137,7 @@ def test_register_agent_name_too_long(client):
 
 
 def test_register_agent_description_too_long(client):
-    """description が500文字を超える場合は 422 を返す。"""
+    """A description longer than 500 characters returns 422."""
     payload = {
         "name": "AgentLongDesc",
         "description": "A" * 501,
@@ -150,7 +150,7 @@ def test_register_agent_description_too_long(client):
 
 
 def test_register_agent_empty_description(client):
-    """description が空文字の場合は 422 を返す。"""
+    """An empty description returns 422."""
     payload = {
         "name": "AgentEmptyDesc",
         "description": "",
@@ -163,10 +163,10 @@ def test_register_agent_empty_description(client):
 
 
 def test_register_agent_name_at_max_length(client):
-    """name がちょうど100文字の場合は成功する。"""
+    """A name of exactly 100 characters succeeds."""
     payload = {
         "name": "A" * 100,
-        "description": "境界値テスト用",
+        "description": "Boundary value test",
         "wallet_address": "So1anaWa11etAddressXXXXXXXXXXXXXXXXXXXXXXX",
         "endpoint": "https://example.com/agent",
     }
@@ -176,11 +176,11 @@ def test_register_agent_name_at_max_length(client):
 
 
 def test_register_agent_wallet_at_min_length(client):
-    """wallet_address がちょうど32文字の場合は成功する。"""
+    """A wallet_address of exactly 32 characters succeeds."""
     payload = {
         "name": "AgentMinWallet",
-        "description": "境界値テスト用",
-        "wallet_address": "So1anaWa11etAddressXXXXXXXXXXXXXX",  # 32文字
+        "description": "Boundary value test",
+        "wallet_address": "So1anaWa11etAddressXXXXXXXXXXXXXX",  # 32 chars
         "endpoint": "https://example.com/agent",
     }
     response = client.post("/agents/register", json=payload)
@@ -194,7 +194,7 @@ def test_register_agent_wallet_at_min_length(client):
 
 
 def test_list_agents_empty(client):
-    """エージェントが 0 件のとき、空配列を返す。"""
+    """Returns an empty array when no agents are registered."""
     response = client.get("/agents")
 
     assert response.status_code == 200
@@ -202,17 +202,17 @@ def test_list_agents_empty(client):
 
 
 def test_list_agents_multiple(client):
-    """複数エージェント登録後、全件を返す。"""
+    """Returns all registered agents when multiple exist."""
     agents = [
         {
             "name": "AgentAlpha",
-            "description": "専門A",
+            "description": "Specialty A",
             "wallet_address": "Wa11etAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
             "endpoint": "https://alpha.example.com/agent",
         },
         {
             "name": "AgentBeta",
-            "description": "専門B",
+            "description": "Specialty B",
             "wallet_address": "Wa11etBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
             "endpoint": "https://beta.example.com/agent",
         },
@@ -235,10 +235,10 @@ def test_list_agents_multiple(client):
 
 
 def test_get_agent_success(client):
-    """存在する agent_id で取得すると、正しいエージェント情報を返す。"""
+    """Returns the correct agent info for an existing agent_id."""
     payload = {
         "name": "RetrievableAgent",
-        "description": "取得テスト用",
+        "description": "Test for retrieval",
         "wallet_address": "So1anaWa11etAddressXXXXXXXXXXXXXXXXXXXXXXX",
         "endpoint": "https://example.com/agent",
     }
@@ -254,7 +254,7 @@ def test_get_agent_success(client):
 
 
 def test_get_agent_not_found(client):
-    """存在しない agent_id で取得すると 404 を返す。"""
+    """Returns 404 for a non-existent agent_id."""
     response = client.get("/agents/00000000-0000-0000-0000-000000000000")
 
     assert response.status_code == 404
