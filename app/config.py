@@ -1,21 +1,21 @@
 """
-アプリケーション設定の集約モジュール。
+Application settings aggregation module.
 
-環境変数またはデフォルト値から設定を読み込む。
+Loads configuration from environment variables or default values.
 """
 
 import os
 
 
 # ---------------------------------------------------------------------------
-# ε-greedy 焼きなまし設定
+# ε-greedy simulated annealing settings
 # ---------------------------------------------------------------------------
 
-# εの初期値（タスク数0のときの探索率）
+# Initial epsilon value (exploration rate when task count is 0)
 EPSILON_INITIAL: float = float(os.getenv("EPSILON_INITIAL", "0.3"))
 
-# 減衰係数（大きいほど速く減衰する）
+# Decay coefficient (larger values decay faster)
 EPSILON_LAMBDA: float = float(os.getenv("EPSILON_LAMBDA", "0.01"))
 
-# εの最小値（完全に収束しないよう保証）
+# Minimum epsilon value (ensures exploration never fully stops)
 EPSILON_MIN: float = float(os.getenv("EPSILON_MIN", "0.05"))

@@ -5,7 +5,7 @@ from app.schemas.task import TaskCreateRequest
 
 
 def create_task(db: Session, req: TaskCreateRequest) -> Task:
-    """タスクを作成してDBに保存する（status=pending, difficulty/risk_levelはNone）。"""
+    """Create a task and save it to the database (status=pending, difficulty/risk_level=None)."""
     task = Task(
         prompt=req.prompt,
         budget=req.budget,
@@ -27,7 +27,7 @@ def update_task_assessment(
     risk_level: str,
     status: str = "running",
 ) -> Task:
-    """難易度・リスクレベルとステータスを更新する。"""
+    """Update the difficulty, risk level, and status of a task."""
     task.difficulty = difficulty
     task.risk_level = risk_level
     task.status = status

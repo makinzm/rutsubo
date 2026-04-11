@@ -1,10 +1,10 @@
 """
-ダッシュボードAPI — 読み取り専用。
+Dashboard API — read-only.
 
-エンドポイント:
-- GET /dashboard/agents         全エージェントの信頼スコア・報酬履歴集計
-- GET /dashboard/agents/{id}    特定エージェントの詳細
-- GET /dashboard/tasks          タスク一覧＋因果連鎖サマリー
+Endpoints:
+- GET /dashboard/agents         Aggregate trust scores and reward history for all agents
+- GET /dashboard/agents/{id}    Details for a specific agent
+- GET /dashboard/tasks          Task list with causal chain summary
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
 def _build_agent_response(db: Session, agent: Agent) -> AgentDashboardResponse:
-    """エージェントの集計データを構築する。"""
+    """Build aggregated data for an agent."""
     subtasks = (
         db.query(SubTask)
         .filter(SubTask.agent_id == agent.agent_id, SubTask.status == "completed")
@@ -65,14 +65,14 @@ def _build_agent_response(db: Session, agent: Agent) -> AgentDashboardResponse:
 
 @router.get("/agents", response_model=list[AgentDashboardResponse])
 def list_agent_dashboard(db: Session = Depends(get_db)):
-    """全エージェントの信頼スコア・報酬履歴を集計して返す。"""
+    """Return aggregated trust scores and reward history for all agents."""
     agents = db.query(Agent).all()
     return [_build_agent_response(db, agent) for agent in agents]
 
 
 @router.get("/agents/{agent_id}", response_model=AgentDashboardResponse)
 def get_agent_dashboard(agent_id: str, db: Session = Depends(get_db)):
-    """特定エージェントの詳細を返す。存在しない場合は 404。"""
+    """Return details for a specific agent. Returns 404 if not found."""
     agent = db.query(Agent).filter(Agent.agent_id == agent_id).first()
     if agent is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
@@ -81,11 +81,11 @@ def get_agent_dashboard(agent_id: str, db: Session = Depends(get_db)):
 
 @router.get("/tasks", response_model=list[TaskDashboardResponse])
 def list_task_dashboard(db: Session = Depends(get_db)):
-    """タスク一覧と各タスクの因果連鎖サマリーを返す。
+    """Return the task list with a causal chain summary for each task.
 
     Note:
-        現状は causal_chain_count をタスクごとに個別クエリしている（N+1）。
-        タスク数が増えた場合は subquery/GROUP BY に最適化すること。
+        Currently queries causal_chain_count per task individually (N+1).
+        Optimize with a subquery/GROUP BY when the number of tasks grows.
     """
     tasks = db.query(Task).order_by(Task.created_at.desc()).all()
     result = []

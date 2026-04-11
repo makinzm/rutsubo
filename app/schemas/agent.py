@@ -3,7 +3,7 @@ from datetime import datetime
 
 from pydantic import AnyHttpUrl, BaseModel, field_validator
 
-# Solana Base58アドレスの簡易チェック（英数字のみ、32〜44文字）
+# Basic Solana Base58 address check (alphanumeric only, 32–44 characters)
 _BASE58_RE = re.compile(r"^[1-9A-HJ-NP-Za-km-z]{32,44}$")
 
 

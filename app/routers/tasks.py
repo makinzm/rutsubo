@@ -21,9 +21,9 @@ def create(
     db: Session = Depends(get_db),
 ):
     """
-    タスクを作成し、バックグラウンドでコーディネーターを起動する。
+    Create a task and launch the coordinator in the background.
 
-    エージェントが1件も登録されていない場合は 400 を返す。
+    Returns 400 if no agents are registered.
     """
     agents = agent_service.list_agents(db)
     if not agents:
@@ -34,8 +34,8 @@ def create(
 
     task = create_task(db, req)
 
-    # コーディネーターをバックグラウンドで非同期実行
-    # task_id のみ渡し、バックグラウンドタスク内で独立したDB Sessionを作成する
+    # Run the coordinator asynchronously in the background.
+    # Only the task_id is passed; an independent DB Session is created inside the background task.
     background_tasks.add_task(_run_coordinator_sync, task.task_id)
 
     return task
@@ -43,10 +43,10 @@ def create(
 
 def _run_coordinator_sync(task_id: str) -> None:
     """
-    BackgroundTasks から asyncio コルーチンを呼び出すためのラッパー。
+    Wrapper to call an asyncio coroutine from BackgroundTasks.
 
-    レスポンス完了後にリクエストスコープのSessionが閉じられる可能性があるため、
-    バックグラウンドタスク内で独立したSessionを生成する。
+    Because the request-scoped Session may be closed after the response is sent,
+    an independent Session is created inside the background task.
     """
     db = SessionLocal()
     try:
@@ -69,10 +69,10 @@ def get_task_by_id(task_id: str, db: Session = Depends(get_db)):
 @router.get("/{task_id}/causal-chain", response_model=list[CausalChainEntryResponse])
 def get_causal_chain(task_id: str, db: Session = Depends(get_db)):
     """
-    タスクの因果連鎖エントリを取得する。
+    Retrieve causal chain entries for a task.
 
-    タスクが存在しない場合は404を返す。
-    タスクが存在するがエントリがない場合は空のリストを返す。
+    Returns 404 if the task does not exist.
+    Returns an empty list if the task exists but has no entries.
     """
     task = get_task(db, task_id)
     if task is None:

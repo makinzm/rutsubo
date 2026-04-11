@@ -1,5 +1,5 @@
 """
-因果連鎖エントリのレスポンススキーマ。
+Response schema for causal chain entries.
 """
 
 from datetime import datetime

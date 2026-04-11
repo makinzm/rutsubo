@@ -1,69 +1,68 @@
 """
-シミュレーター — ε-greedy 採用ロジックの学習曲線を可視化するためのシミュレーション。
+Simulator — simulation for visualizing the learning curve of the ε-greedy hiring logic.
 
-## 何をしているか
+## What it does
 
-実際のワーカーエージェントサーバーを用意せずに、Rutsubo の採用ロジックが
-「良いエージェントを自動的に優先するようになる」様子をデモする。
+Demonstrates how Rutsubo's hiring logic naturally starts prioritizing better agents,
+without needing real worker agent servers.
 
-### 流れ
+### Flow
 
-1. **エージェント登録**
-   品質レベルが異なる4つのダミーエージェントをDBに登録する。
-   各エージェントには固有の quality 値（0.0〜1.0）が設定されており、
-   これがワーカーとしての「実力」を表す。
+1. **Agent registration**
+   Registers 4 dummy agents with different quality levels into the DB.
+   Each agent has a unique quality value (0.0–1.0) representing their capability as a worker.
 
-   | エージェント名    | quality | 意味                   |
-   |------------------|---------|------------------------|
-   | HighQualityAgent | 0.9     | 優秀なエージェント      |
-   | MediumAgent      | 0.6     | 普通のエージェント      |
-   | PoorAgent        | 0.3     | 低品質なエージェント    |
-   | NewAgent         | None    | 未知（毎回ランダム）    |
+   | Agent name       | quality | Meaning                        |
+   |------------------|---------|--------------------------------|
+   | HighQualityAgent | 0.9     | High-performing agent          |
+   | MediumAgent      | 0.6     | Average agent                  |
+   | PoorAgent        | 0.3     | Low-quality agent              |
+   | NewAgent         | None    | Unknown (random each time)     |
 
-2. **タスクの繰り返し投入**
-   20件のタスクをループで投入し、各タスクでコーディネーターを動かす。
-   コーディネーターは ε-greedy（焼きなまし）で担当エージェントを選び、
-   サブタスクを割り当てる。
+2. **Repeated task submission**
+   Submits 20 tasks in a loop, running the coordinator for each task.
+   The coordinator selects the assigned agent via ε-greedy (simulated annealing)
+   and assigns subtasks.
 
-3. **品質ベースのモック実行**
-   ワーカーエンドポイントへの HTTP 送信は実在しないため、
-   `httpx.AsyncClient.post` をモックし、エンドポイント URL から
-   そのエージェントの quality を引いた結果テキスト（`QUALITY:0.90 result...`）を返す。
-   これにより「高品質エージェントは良い結果を出す」という前提を再現する。
+3. **Quality-based mock execution**
+   Since there are no real worker endpoints to send HTTP requests to,
+   `httpx.AsyncClient.post` is mocked to return a result text
+   (`QUALITY:0.90 result...`) derived from the agent's quality for that endpoint URL.
+   This reproduces the premise that "high-quality agents produce better results."
 
-4. **評価・trust_score 更新**
-   コーディネーター内のレビュアー（LLM-as-a-Judge）が結果を評価する。
-   モード `LLM_BACKEND=mock` では、結果テキストの `QUALITY:X` タグを
-   そのままスコアとして使うため、実際の Claude API 呼び出しは不要。
-   評価スコアに基づいて各エージェントの `trust_score` が
-   指数移動平均（`0.8 * old + 0.2 * eval`）で更新される。
+4. **Evaluation and trust_score update**
+   The reviewer inside the coordinator (LLM-as-a-Judge) evaluates the results.
+   In `LLM_BACKEND=mock` mode, the `QUALITY:X` tag in the result text is used
+   directly as the score, so no real Claude API call is needed.
+   Each agent's `trust_score` is updated via exponential moving average
+   (`0.8 * old + 0.2 * eval`) based on the evaluation score.
 
-5. **学習曲線の出力**
-   各タスク完了後に全エージェントの `trust_score` を記録し、
-   最終的に `simulation_result.json` へ出力する。
+5. **Learning curve output**
+   After each task completes, all agents' `trust_score` values are recorded,
+   and the final result is written to `simulation_result.json`.
 
-### 期待される結果
+### Expected results
 
-タスク数が増えるにつれて：
-- HighQualityAgent の trust_score が上昇し採用されやすくなる
-- PoorAgent の trust_score が下降し採用されにくくなる
-- ε が減衰（焼きなまし）することで探索より活用が優先されるようになる
+As the number of tasks increases:
+- HighQualityAgent's trust_score rises and it is selected more often
+- PoorAgent's trust_score falls and it is selected less often
+- As ε decays (simulated annealing), exploitation is prioritized over exploration
 
-### 環境変数
+### Environment variables
 
-| 変数            | デフォルト | 説明                                          |
-|----------------|-----------|-----------------------------------------------|
-| `LLM_BACKEND`  | `mock`    | `mock` / `cli` / `api` を切り替え可能         |
-| `PAYMENT_ENABLED` | `false` | `true` にすると Solana devnet への送金が有効  |
+| Variable            | Default | Description                                         |
+|---------------------|---------|-----------------------------------------------------|
+| `LLM_BACKEND`       | `mock`  | Switch between `mock` / `cli` / `api`               |
+| `PAYMENT_ENABLED`   | `false` | Set to `true` to enable Solana devnet transfers     |
 
-### 実行方法
+### How to run
 
-    uv run python -m app.simulation          # デフォルト20タスク
-    uv run python -m app.simulation 50       # 50タスクで実行
+    uv run python -m app.simulation          # default 20 tasks
+    uv run python -m app.simulation 50       # run with 50 tasks
 
-### 出力
+### Output
 
-    simulation_result.json — 学習曲線データ（task_index ごとの trust_score スナップショット）
+    simulation_result.json — learning curve data (trust_score snapshot per task_index)
 """
 
 import asyncio
@@ -75,8 +74,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.orm import Session
 
-# シミュレーターはデフォルトでモックLLMを使用する
-# 実際のClaude APIやCLIを使いたい場合は LLM_BACKEND=api or cli を設定
+# The simulator uses the mock LLM by default.
+# Set LLM_BACKEND=api or cli to use the real Claude API or CLI.
 os.environ.setdefault("LLM_BACKEND", "mock")
 
 from app.db.database import Base, SessionLocal, engine
@@ -85,7 +84,7 @@ from app.models import causal_chain as _causal_chain_models  # noqa: F401
 from app.models import task as _task_models  # noqa: F401
 from app.models.agent import Agent
 
-# テーブルが存在しない場合は作成する
+# Create tables if they do not exist
 Base.metadata.create_all(bind=engine)
 from app.schemas.task import TaskCreateRequest
 from app.services.coordinator import run_coordinator
@@ -94,61 +93,61 @@ from app.services.task_service import create_task
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# ダミーエージェント定義
+# Dummy agent definitions
 # ---------------------------------------------------------------------------
 
 DUMMY_AGENTS = [
     {
         "name": "HighQualityAgent",
-        "description": "高品質なコード生成・分析が得意な優秀なエージェント",
+        "description": "An excellent agent specializing in high-quality code generation and analysis",
         "wallet_address": "So11111111111111111111111111111111111111112",
         "endpoint": "http://localhost:9001",
         "quality": 0.9,
     },
     {
         "name": "MediumAgent",
-        "description": "汎用的なタスクをこなす普通のエージェント",
+        "description": "An average agent capable of handling general-purpose tasks",
         "wallet_address": "So11111111111111111111111111111111111111113",
         "endpoint": "http://localhost:9002",
         "quality": 0.6,
     },
     {
         "name": "PoorAgent",
-        "description": "低品質な出力を返すことが多いエージェント",
+        "description": "An agent that frequently produces low-quality output",
         "wallet_address": "So11111111111111111111111111111111111111114",
         "endpoint": "http://localhost:9003",
         "quality": 0.3,
     },
     {
         "name": "NewAgent",
-        "description": "新規参入エージェント。実績未知のため探索対象",
+        "description": "A newly entered agent with unknown track record; target for exploration",
         "wallet_address": "So11111111111111111111111111111111111111115",
         "endpoint": "http://localhost:9004",
-        "quality": None,  # 未知（ランダム）
+        "quality": None,  # Unknown (random)
     },
 ]
 
-# シミュレーション用タスクプロンプト
+# Task prompts for simulation
 _TASK_PROMPTS = [
-    "Pythonでソートアルゴリズムを実装してください",
-    "機械学習モデルの評価指標を説明してください",
-    "RESTful APIの設計ベストプラクティスを列挙してください",
-    "データベースのインデックス最適化方法を説明してください",
-    "マイクロサービスアーキテクチャのメリット・デメリットを分析してください",
+    "Implement a sorting algorithm in Python",
+    "Explain evaluation metrics for machine learning models",
+    "List best practices for RESTful API design",
+    "Explain methods for database index optimization",
+    "Analyze the pros and cons of microservice architecture",
 ]
 
 
 # ---------------------------------------------------------------------------
-# エージェント登録
+# Agent registration
 # ---------------------------------------------------------------------------
 
 
 def _register_dummy_agents(db: Session) -> dict[str, str]:
     """
-    ダミーエージェントをDBに登録する（既存の場合はスキップ）。
+    Register dummy agents in the DB (skip if they already exist).
 
     Returns:
-        {agent_name: agent_id} のマッピング
+        Mapping of {agent_name: agent_id}
     """
     name_to_id: dict[str, str] = {}
     for agent_def in DUMMY_AGENTS:
@@ -173,12 +172,12 @@ def _register_dummy_agents(db: Session) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# 学習曲線スナップショット
+# Learning curve snapshot
 # ---------------------------------------------------------------------------
 
 
 def _snapshot_trust_scores(db: Session, task_index: int) -> dict:
-    """現在の全エージェントの trust_score をスナップショットとして返す。"""
+    """Return a snapshot of the current trust_score for all agents."""
     agents = db.query(Agent).all()
     return {
         "task_index": task_index,
@@ -187,7 +186,7 @@ def _snapshot_trust_scores(db: Session, task_index: int) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# シミュレーション本体
+# Simulation body
 # ---------------------------------------------------------------------------
 
 
@@ -197,30 +196,30 @@ async def run_simulation(
     output_file: str = "simulation_result.json",
 ) -> dict:
     """
-    シミュレーションを実行し、学習曲線データを返す。
+    Run the simulation and return learning curve data.
 
-    1. 4ダミーエージェントを登録
-    2. n_tasks件のタスクをループ投入
-    3. 各タスク後にtrust_scoreをスナップショット
-    4. 結果をJSONファイルに出力
+    1. Register 4 dummy agents
+    2. Submit n_tasks tasks in a loop
+    3. Take a trust_score snapshot after each task
+    4. Write results to a JSON file
 
     Args:
-        db: DBセッション
-        n_tasks: 投入するタスク数（デフォルト20）
-        output_file: 出力JSONファイルパス
+        db: Database session
+        n_tasks: Number of tasks to submit (default 20)
+        output_file: Output JSON file path
 
     Returns:
-        {"learning_curve": [...]} 形式の結果dict
+        Result dict in the format {"learning_curve": [...]}
     """
-    # 1. エージェント登録
+    # 1. Register agents
     _register_dummy_agents(db)
 
     learning_curve = []
 
-    # 初期スナップショット
+    # Initial snapshot
     learning_curve.append(_snapshot_trust_scores(db, 0))
 
-    # エンドポイント→品質のマッピングを構築
+    # Build endpoint → quality mapping
     endpoint_quality = {
         a["endpoint"]: (a["quality"] if a["quality"] is not None else random.uniform(0.0, 1.0))
         for a in DUMMY_AGENTS
@@ -228,38 +227,38 @@ async def run_simulation(
 
     def _quality_response(quality: float, subtask: str) -> str:
         """
-        品質レベルに応じた「それらしい回答テキスト」を生成する。
+        Generate a plausible response text based on quality level.
 
-        LLM_BACKEND=cli/api のときに Claude が実際に評価するため、
-        品質レベルが伝わるような意味のある文章を返す必要がある。
-        mock バックエンドのときは QUALITY:X タグが評価に使われる。
+        When LLM_BACKEND=cli/api, Claude actually evaluates the text,
+        so the response must convey the quality level meaningfully.
+        When using the mock backend, the QUALITY:X tag is used for evaluation.
         """
         if quality >= 0.8:
             return (
-                f"【完全な回答】{subtask}\n\n"
-                "要件をすべて満たす詳細な実装を提供します。"
-                "コードは最適化済みで、エッジケースも考慮しています。"
-                "テストケースも含め、本番環境で即使用可能な品質です。"
-                "計算量・空間計算量の分析も添付します。"
+                f"[Complete answer] {subtask}\n\n"
+                "Providing a detailed implementation that satisfies all requirements. "
+                "The code is optimized and accounts for edge cases. "
+                "Production-ready quality including test cases. "
+                "Complexity analysis (time and space) is also included."
                 f" QUALITY:{quality:.2f}"
             )
         elif quality >= 0.5:
             return (
-                f"【部分的な回答】{subtask}\n\n"
-                "基本的な要件は満たしていますが、一部最適化が不十分です。"
-                "主要なケースは動作しますが、エッジケースの処理が不完全です。"
+                f"[Partial answer] {subtask}\n\n"
+                "Basic requirements are met but some optimizations are lacking. "
+                "Main cases work but edge case handling is incomplete."
                 f" QUALITY:{quality:.2f}"
             )
         else:
             return (
-                f"【不完全な回答】{subtask}\n\n"
-                "要件の理解が不十分で、実装が不完全です。"
-                "多くのバグが含まれており、そのまま使用することはできません。"
+                f"[Incomplete answer] {subtask}\n\n"
+                "Requirements are not fully understood and the implementation is incomplete. "
+                "Contains many bugs and cannot be used as-is."
                 f" QUALITY:{quality:.2f}"
             )
 
     def _make_httpx_mock():
-        """エンドポイントURLに基づいて品質に応じた回答テキストを返すhttpxモック。"""
+        """httpx mock that returns quality-based response text based on the endpoint URL."""
         mock_http_client = AsyncMock()
 
         async def _mock_post(url, **kwargs):
@@ -269,7 +268,7 @@ async def run_simulation(
             quality = endpoint_quality.get(base, 0.5)
             if quality is None:
                 quality = random.uniform(0.0, 1.0)
-            subtask = (kwargs.get("json") or {}).get("subtask", "タスク")
+            subtask = (kwargs.get("json") or {}).get("subtask", "task")
             resp = MagicMock()
             resp.status_code = 200
             resp.text = _quality_response(quality, subtask)
@@ -278,7 +277,7 @@ async def run_simulation(
         mock_http_client.post = _mock_post
         return mock_http_client
 
-    # 2. タスクをループ投入
+    # 2. Submit tasks in a loop
     for i in range(n_tasks):
         prompt = _TASK_PROMPTS[i % len(_TASK_PROMPTS)]
         req = TaskCreateRequest(prompt=prompt, budget=0.1)
@@ -293,15 +292,15 @@ async def run_simulation(
             except Exception as exc:
                 logger.warning("Task %d failed: %s", i + 1, exc)
 
-        # 3. trust_score スナップショット
-        db.expire_all()  # DBから最新値を再取得
+        # 3. trust_score snapshot
+        db.expire_all()  # Reload latest values from the DB
         snapshot = _snapshot_trust_scores(db, i + 1)
         learning_curve.append(snapshot)
         logger.info("Task %d/%d done. Scores: %s", i + 1, n_tasks, snapshot["agent_trust_scores"])
 
     result = {"learning_curve": learning_curve}
 
-    # 4. JSONファイルに出力
+    # 4. Write to JSON file
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
 
@@ -315,15 +314,15 @@ def run_simulation_sync(
     output_file: str = "simulation_result.json",
 ) -> dict:
     """
-    run_simulation の同期ラッパー。テストおよびCLI実行から呼び出す。
+    Synchronous wrapper for run_simulation. Called from tests and CLI.
 
     Args:
-        db: DBセッション（None の場合は本番DBセッションを生成）
-        n_tasks: 投入するタスク数
-        output_file: 出力JSONファイルパス
+        db: Database session (a production session is created if None)
+        n_tasks: Number of tasks to submit
+        output_file: Output JSON file path
 
     Returns:
-        {"learning_curve": [...]} 形式の結果dict
+        Result dict in the format {"learning_curve": [...]}
     """
     close_db = False
     if db is None:
@@ -337,7 +336,7 @@ def run_simulation_sync(
 
 
 # ---------------------------------------------------------------------------
-# CLI エントリポイント
+# CLI entry point
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":

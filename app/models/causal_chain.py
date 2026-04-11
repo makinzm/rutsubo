@@ -1,8 +1,8 @@
 """
-因果連鎖エントリモデル。
+Causal chain entry model.
 
-タスク失敗の原因がどのレイヤー（task_definition / coordinator / worker / reviewer）
-にあるかを記録する。評価結果と照合することで責任の所在を逆引きできる。
+Records which layer (task_definition / coordinator / worker / reviewer) is responsible
+for a task failure. Cross-referencing with evaluation results allows tracing accountability.
 """
 
 import uuid
@@ -25,11 +25,11 @@ class CausalChainEntry(Base):
     )
     # "task_definition" | "coordinator" | "worker" | "reviewer"
     layer: Mapped[str] = mapped_column(String, nullable=False)
-    # worker の場合はエージェント ID、それ以外は None
+    # Agent ID for the worker layer; None for other layers
     agent_id: Mapped[str | None] = mapped_column(String, nullable=True)
-    # 0.0〜1.0（高いほど良い）
+    # 0.0–1.0 (higher is better)
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # 問題の説明
+    # Description of the issue
     note: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime,

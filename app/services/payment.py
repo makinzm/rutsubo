@@ -1,8 +1,8 @@
 """
-報酬分配サービス — スコア比例分配とSolana送金（モック）。
+Reward distribution service — proportional score-based distribution and Solana transfer (mock).
 
-PAYMENT_ENABLED=true の場合は実際の Solana devnet に送金する（将来実装）。
-PAYMENT_ENABLED=false（デフォルト）の場合はログのみ。
+When PAYMENT_ENABLED=true, transfers to the actual Solana devnet (future implementation).
+When PAYMENT_ENABLED=false (default), logs only.
 """
 
 import logging
@@ -18,20 +18,20 @@ async def distribute_rewards(
     budget: float,
 ) -> dict[str, float]:
     """
-    スコアに比例して budget を分配する。
+    Distribute budget proportional to scores.
 
-    - 全スコアが 0 の場合は均等分配
-    - PAYMENT_ENABLED=true の場合は Solana devnet に送金（将来実装）
-    - PAYMENT_ENABLED=false の場合はログのみ
+    - If all scores are 0, distribute equally
+    - When PAYMENT_ENABLED=true, transfer to Solana devnet (future implementation)
+    - When PAYMENT_ENABLED=false, log only
 
     Args:
-        task_id: タスクID（ログ用）
-        scores: {agent_id: score} のマッピング
-        wallets: {agent_id: wallet_address} のマッピング
-        budget: 分配するSOL/USDC総額
+        task_id: Task ID (for logging)
+        scores: Mapping of {agent_id: score}
+        wallets: Mapping of {agent_id: wallet_address}
+        budget: Total SOL/USDC amount to distribute
 
     Returns:
-        {agent_id: reward_amount} のマッピング
+        Mapping of {agent_id: reward_amount}
     """
     if not scores:
         return {}
@@ -39,7 +39,7 @@ async def distribute_rewards(
     total_score = sum(scores.values())
 
     if total_score == 0.0:
-        # 全スコアが0の場合は均等分配
+        # Equal distribution when all scores are 0
         n = len(scores)
         rewards = {agent_id: budget / n for agent_id in scores}
     else:
@@ -51,19 +51,19 @@ async def distribute_rewards(
     payment_enabled = os.environ.get("PAYMENT_ENABLED", "false").lower() == "true"
 
     if payment_enabled:
-        # 将来実装: x402-solana SDK を使ったdevnet送金
+        # Future implementation: devnet transfer using the x402-solana SDK
         logger.info(
-            "PAYMENT_ENABLED=true: Solana送金（将来実装）task_id=%s rewards=%s",
+            "PAYMENT_ENABLED=true: Solana transfer (future implementation) task_id=%s rewards=%s",
             task_id,
             rewards,
         )
-        # TODO: Solana devnet 送金実装
+        # TODO: Implement Solana devnet transfer
         # for agent_id, amount in rewards.items():
         #     wallet = wallets.get(agent_id)
         #     await solana_transfer(wallet, amount)
     else:
         logger.info(
-            "PAYMENT_ENABLED=false: 送金スキップ（ログのみ）task_id=%s rewards=%s",
+            "PAYMENT_ENABLED=false: transfer skipped (log only) task_id=%s rewards=%s",
             task_id,
             rewards,
         )

@@ -36,17 +36,17 @@ def get_agent(db: Session, agent_id: str) -> Agent | None:
 
 def update_trust_score(db: Session, agent_id: str, eval_score: float) -> Agent:
     """
-    評価スコアに基づいてエージェントの trust_score を指数移動平均で更新する。
+    Update an agent's trust_score using exponential moving average based on the evaluation score.
 
     new_score = 0.8 * old_score + 0.2 * eval_score
 
     Args:
-        db: DBセッション
-        agent_id: 更新するエージェントのID
-        eval_score: レビュアーが算出した評価スコア（0.0〜1.0）
+        db: Database session
+        agent_id: ID of the agent to update
+        eval_score: Evaluation score computed by the reviewer (0.0–1.0)
 
     Returns:
-        更新後のエージェント
+        The updated agent
     """
     agent = db.query(Agent).filter(Agent.agent_id == agent_id).first()
     if agent is None:

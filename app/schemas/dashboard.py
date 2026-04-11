@@ -1,5 +1,5 @@
 """
-ダッシュボードAPIのレスポンススキーマ。
+Response schemas for the Dashboard API.
 """
 
 from datetime import datetime
@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 
 class TaskHistoryItem(BaseModel):
-    """エージェントのタスク実行履歴の1件。"""
+    """A single task execution history entry for an agent."""
 
     task_id: str
     score: float | None
@@ -19,7 +19,7 @@ class TaskHistoryItem(BaseModel):
 
 
 class AgentDashboardResponse(BaseModel):
-    """ダッシュボード用エージェント集計レスポンス。"""
+    """Aggregated agent response for the dashboard."""
 
     agent_id: str
     name: str
@@ -33,7 +33,7 @@ class AgentDashboardResponse(BaseModel):
 
 
 class TaskDashboardResponse(BaseModel):
-    """ダッシュボード用タスク一覧レスポンス。"""
+    """Task list response for the dashboard."""
 
     task_id: str
     prompt: str

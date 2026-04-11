@@ -1,12 +1,12 @@
 """
-コーディネーターサービス。
+Coordinator service.
 
-役割:
-1. Claude APIで難易度・リスクレベルを判定する
-2. ε-greedy（焼きなまし）でエージェントを選択する
-3. Claude APIでサブタスクに分解する
-4. 各エージェントの endpoint に非同期でサブタスクを送信する
-5. 評価結果を因果連鎖エントリとして記録する
+Responsibilities:
+1. Assess task difficulty and risk level using the Claude API
+2. Select agents using ε-greedy (simulated annealing)
+3. Decompose the task into subtasks using the Claude API
+4. Send subtasks asynchronously to each agent's endpoint
+5. Record evaluation results as causal chain entries
 """
 
 import asyncio
@@ -30,55 +30,55 @@ from app.services.task_service import update_task_assessment, update_task_status
 
 logger = logging.getLogger(__name__)
 
-# 最大選択エージェント数
+# Maximum number of agents to select
 MAX_AGENTS = 3
-# 難易度・リスクレベルの有効値
+# Valid values for difficulty and risk level
 _VALID_LEVELS = {"low", "medium", "high"}
-# Claude API モデル名
+# Claude API model name
 _CLAUDE_MODEL = "claude-sonnet-4-6"
 
 
 # ---------------------------------------------------------------------------
-# ε-greedy 焼きなまし
+# ε-greedy simulated annealing
 # ---------------------------------------------------------------------------
 
 
 def compute_epsilon(n_tasks: int) -> float:
     """
-    完了タスク数に基づいてεを計算する（焼きなまし）。
+    Compute epsilon based on the number of completed tasks (simulated annealing).
 
     ε = max(EPSILON_MIN, EPSILON_INITIAL * exp(-EPSILON_LAMBDA * n_tasks))
 
     Args:
-        n_tasks: これまでの完了タスク数
+        n_tasks: Number of tasks completed so far
 
     Returns:
-        0.05〜EPSILON_INITIAL の範囲のε値
+        Epsilon value in the range [EPSILON_MIN, EPSILON_INITIAL]
     """
     eps = EPSILON_INITIAL * math.exp(-EPSILON_LAMBDA * n_tasks)
     return max(EPSILON_MIN, eps)
 
 
 # ---------------------------------------------------------------------------
-# ε-greedy エージェント選択
+# ε-greedy agent selection
 # ---------------------------------------------------------------------------
 
 
 def select_agents(agents: list[Agent], epsilon: float | None = None) -> list[Agent]:
     """
-    ε-greedy でエージェントを選択する。
+    Select agents using ε-greedy.
 
-    - ε 確率でランダム選択（探索）
-    - 1-ε 確率で trust_score 上位から選択（活用）
-    - 選択数は min(len(agents), MAX_AGENTS)
-    - epsilon が None の場合はデフォルト値（EPSILON_INITIAL）を使用する
+    - With probability ε: random selection (exploration)
+    - With probability 1-ε: top agents by trust_score (exploitation)
+    - Number selected: min(len(agents), MAX_AGENTS)
+    - If epsilon is None, the default value (EPSILON_INITIAL) is used
 
     Args:
-        agents: 選択候補のエージェントリスト
-        epsilon: 探索率（0.0〜1.0）。None の場合はデフォルト値を使用
+        agents: List of candidate agents
+        epsilon: Exploration rate (0.0–1.0). Uses default if None.
 
     Returns:
-        選択されたエージェントのリスト
+        List of selected agents
     """
     n = min(len(agents), MAX_AGENTS)
     if n == 0:
@@ -87,36 +87,36 @@ def select_agents(agents: list[Agent], epsilon: float | None = None) -> list[Age
     eps = epsilon if epsilon is not None else EPSILON_INITIAL
 
     if random.random() < eps:
-        # 探索: ランダムに n 件選ぶ
+        # Exploration: pick n agents at random
         return random.sample(agents, n)
     else:
-        # 活用: trust_score 降順で上位 n 件
+        # Exploitation: top n agents sorted by trust_score descending
         return sorted(agents, key=lambda a: a.trust_score, reverse=True)[:n]
 
 
 # ---------------------------------------------------------------------------
-# Claude API — 難易度・リスクレベル判定
+# Claude API — difficulty and risk level assessment
 # ---------------------------------------------------------------------------
 
 
 def assess_task(prompt: str) -> dict[str, str]:
     """
-    タスクの難易度（difficulty）とリスクレベル（risk_level）を LLM で判定する。
+    Use the LLM to assess the task's difficulty and risk_level.
 
     Returns:
         {"difficulty": "low"|"medium"|"high", "risk_level": "low"|"medium"|"high"}
     """
     system = (
-        "あなたはタスク評価AIです。ユーザーのタスク内容を分析して、"
-        "difficulty（low/medium/high）と risk_level（low/medium/high）を"
-        "必ずJSON形式のみで返してください。"
-        '例: {"difficulty": "medium", "risk_level": "low"}'
+        "You are a task assessment AI. Analyze the user's task and return "
+        "difficulty (low/medium/high) and risk_level (low/medium/high) "
+        "as JSON only. "
+        'Example: {"difficulty": "medium", "risk_level": "low"}'
     )
-    raw = _llm.complete(system, f"タスク: {prompt}", max_tokens=100)
+    raw = _llm.complete(system, f"Task: {prompt}", max_tokens=100)
     try:
         candidate = raw.strip()
         if not candidate.startswith("{"):
-            # Markdownコードブロックや前置きテキストを除去
+            # Strip Markdown code fences or leading text
             import re as _re
             m = _re.search(r'\{[^{}]*"difficulty"[^{}]*\}', candidate, _re.DOTALL)
             if m:
@@ -127,7 +127,7 @@ def assess_task(prompt: str) -> dict[str, str]:
 
     difficulty = data.get("difficulty", "medium")
     risk_level = data.get("risk_level", "medium")
-    # 無効な値はmediumにフォールバック
+    # Fall back to "medium" for invalid values
     if difficulty not in _VALID_LEVELS:
         difficulty = "medium"
     if risk_level not in _VALID_LEVELS:
@@ -137,13 +137,13 @@ def assess_task(prompt: str) -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Claude API — サブタスク分解
+# Claude API — subtask decomposition
 # ---------------------------------------------------------------------------
 
 
 def decompose_task(prompt: str, agents: list[Agent]) -> list[dict[str, str]]:
     """
-    タスクを各エージェント向けサブタスクに分解する。
+    Decompose a task into subtasks for each agent.
 
     Returns:
         [{"agent_name": "...", "subtask": "..."}, ...]
@@ -152,19 +152,19 @@ def decompose_task(prompt: str, agents: list[Agent]) -> list[dict[str, str]]:
         f"- {a.name}: {a.description}" for a in agents
     )
     system = (
-        "あなたはタスク分解AIです。ユーザーのタスクを、指定されたエージェントそれぞれへのサブタスクに分解してください。"
-        "必ずJSON配列のみを返してください。"
-        '例: [{"agent_name": "AgentA", "subtask": "..."}]'
+        "You are a task decomposition AI. Break the user's task into subtasks "
+        "for each specified agent. Return a JSON array only. "
+        'Example: [{"agent_name": "AgentA", "subtask": "..."}]'
     )
     user_message = (
-        f"タスク: {prompt}\n\n"
-        f"利用可能なエージェント:\n{agent_profiles}"
+        f"Task: {prompt}\n\n"
+        f"Available agents:\n{agent_profiles}"
     )
     raw = _llm.complete(system, user_message, max_tokens=500)
     try:
         candidate = raw.strip()
         if not candidate.startswith("["):
-            # Markdownコードブロックや前置きテキストを除去してJSON配列を抽出
+            # Strip Markdown code fences or leading text and extract the JSON array
             import re as _re
             m = _re.search(r'\[.*\]', candidate, _re.DOTALL)
             if m:
@@ -173,14 +173,14 @@ def decompose_task(prompt: str, agents: list[Agent]) -> list[dict[str, str]]:
         if not isinstance(subtasks, list):
             raise ValueError("expected list")
     except (json.JSONDecodeError, ValueError):
-        # フォールバック: 全エージェントに同じタスクを割り当て
+        # Fallback: assign the same task to all agents
         subtasks = [{"agent_name": a.name, "subtask": prompt} for a in agents]
 
     return subtasks
 
 
 # ---------------------------------------------------------------------------
-# 因果連鎖エントリ記録
+# Causal chain entry recording
 # ---------------------------------------------------------------------------
 
 
@@ -194,18 +194,18 @@ def _record_causal_entry(
     note: str | None = None,
 ) -> CausalChainEntry:
     """
-    因果連鎖エントリを DB に保存して返す。
+    Save a causal chain entry to the database and return it.
 
     Args:
-        db: DBセッション
-        task_id: 対象タスクのID
-        layer: レイヤー名（task_definition / coordinator / worker / reviewer）
-        agent_id: エージェントID（worker レイヤーの場合）
-        score: 評価スコア（0.0〜1.0）
-        note: 問題の説明（省略可）
+        db: Database session
+        task_id: ID of the target task
+        layer: Layer name (task_definition / coordinator / worker / reviewer)
+        agent_id: Agent ID (for the worker layer)
+        score: Evaluation score (0.0–1.0)
+        note: Description of the issue (optional)
 
     Returns:
-        保存された CausalChainEntry
+        The saved CausalChainEntry
     """
     entry = CausalChainEntry(
         task_id=task_id,
@@ -220,7 +220,7 @@ def _record_causal_entry(
 
 
 # ---------------------------------------------------------------------------
-# ワーカーエージェントへの送信
+# Dispatching to worker agents
 # ---------------------------------------------------------------------------
 
 
@@ -230,7 +230,7 @@ async def _send_subtask(
     endpoint: str,
     subtask_prompt: str,
 ) -> None:
-    """サブタスクを非同期でエージェントの endpoint に送信する。"""
+    """Send a subtask asynchronously to the agent's endpoint."""
     async with httpx.AsyncClient(timeout=30.0) as http_client:
         try:
             resp = await http_client.post(
@@ -248,17 +248,17 @@ async def _send_subtask(
 
 
 # ---------------------------------------------------------------------------
-# コーディネーターメインフロー
+# Coordinator main flow
 # ---------------------------------------------------------------------------
 
 
 async def run_coordinator(db: Session, task: Task) -> None:
     """
-    タスクを受け取り、難易度判定 → エージェント選択 → サブタスク分解 → 送信 を実行する。
-    バックグラウンドタスクとして呼び出されることを想定している。
+    Accept a task and execute: difficulty assessment → agent selection → subtask decomposition → dispatch.
+    Intended to be called as a background task.
     """
     try:
-        # 1. 難易度・リスクレベル判定
+        # 1. Assess difficulty and risk level
         assessment = assess_task(task.prompt)
         update_task_assessment(
             db, task,
@@ -266,7 +266,7 @@ async def run_coordinator(db: Session, task: Task) -> None:
             risk_level=assessment["risk_level"],
         )
 
-        # 2. 登録済みエージェントを取得してε-greedy選択（焼きなまし）
+        # 2. Fetch registered agents and select via ε-greedy (simulated annealing)
         all_agents = agent_service.list_agents(db)
         n_completed = (
             db.query(Task)
@@ -276,13 +276,13 @@ async def run_coordinator(db: Session, task: Task) -> None:
         epsilon = compute_epsilon(n_completed)
         selected = select_agents(all_agents, epsilon=epsilon)
 
-        # 3. サブタスクに分解
+        # 3. Decompose into subtasks
         subtask_defs = decompose_task(task.prompt, selected)
 
-        # agent_name → Agent のマッピング
+        # Mapping of agent_name → Agent
         agent_map = {a.name: a for a in selected}
 
-        # 4. SubTask レコード作成 + 非同期送信
+        # 4. Create SubTask records and dispatch asynchronously
         send_tasks = []
         for st_def in subtask_defs:
             agent_name = st_def.get("agent_name", "")
@@ -301,17 +301,17 @@ async def run_coordinator(db: Session, task: Task) -> None:
                 _send_subtask(db, subtask, agent.endpoint, subtask.prompt)
             )
 
-        # 非同期で全エージェントに送信
+        # Dispatch to all agents asynchronously
         await asyncio.gather(*send_tasks, return_exceptions=True)
 
-        # 5. 各サブタスクの結果をレビュアーで評価
+        # 5. Evaluate each subtask result with the reviewer
         completed_subtasks = (
             db.query(SubTask)
             .filter(SubTask.task_id == task.task_id, SubTask.status == "completed")
             .all()
         )
 
-        # agent_id → score のマッピング（複数サブタスクがある場合は平均）
+        # Mapping of agent_id → scores (averaged if multiple subtasks)
         agent_scores: dict[str, list[float]] = {}
         for subtask in completed_subtasks:
             score = await evaluate_subtask(
@@ -320,12 +320,12 @@ async def run_coordinator(db: Session, task: Task) -> None:
                 risk_level=task.risk_level or "medium",
             )
             subtask.score = score
-            # TODO: 全サブタスク評価後に一括コミットする設計に改善する
-            # 現状はサブタスクごとにコミットしており、途中エラー時に一部スコアのみ
-            # 保存される可能性がある。MVP段階では許容範囲。
+            # TODO: Improve design to commit in bulk after all subtasks are evaluated.
+            # Currently commits per subtask; a mid-run error may leave only partial scores saved.
+            # Acceptable for the MVP stage.
             db.commit()
 
-            # 因果連鎖エントリを worker レイヤーとして記録
+            # Record as a worker-layer causal chain entry
             _record_causal_entry(
                 db,
                 task_id=task.task_id,
@@ -338,13 +338,13 @@ async def run_coordinator(db: Session, task: Task) -> None:
                 agent_scores[subtask.agent_id] = []
             agent_scores[subtask.agent_id].append(score)
 
-        # エージェントごとのスコアを平均化
+        # Average scores per agent
         avg_scores = {
             agent_id: sum(scores) / len(scores)
             for agent_id, scores in agent_scores.items()
         }
 
-        # 6. スコアに比例して budget を分配
+        # 6. Distribute budget proportional to scores
         wallets = {
             a.agent_id: a.wallet_address
             for a in selected
@@ -357,12 +357,12 @@ async def run_coordinator(db: Session, task: Task) -> None:
             budget=task.budget,
         )
 
-        # サブタスクに reward を記録
+        # Record reward on each subtask
         for subtask in completed_subtasks:
             subtask.reward = rewards.get(subtask.agent_id)
             db.commit()
 
-        # 7. 各エージェントの trust_score を更新
+        # 7. Update each agent's trust_score
         for agent_id, score in avg_scores.items():
             agent_service.update_trust_score(db, agent_id, eval_score=score)
 

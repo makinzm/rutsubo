@@ -1,10 +1,10 @@
 """
-LLMクライアント抽象化レイヤー。
+LLM client abstraction layer.
 
-LLM_BACKEND 環境変数で実装を切り替える:
-  - "api"  : anthropic SDK（ANTHROPIC_API_KEY 必要）
-  - "cli"  : claude CLI サブプロセス（Claude Code の認証をそのまま利用）
-  - "mock" : モックレスポンス（テスト・シミュレーション用）
+Switch implementations via the LLM_BACKEND environment variable:
+  - "api"  : anthropic SDK (requires ANTHROPIC_API_KEY)
+  - "cli"  : claude CLI subprocess (reuses Claude Code authentication)
+  - "mock" : mock responses (for tests and simulation)
 """
 
 import json
@@ -19,15 +19,15 @@ LLM_BACKEND = os.getenv("LLM_BACKEND", "api")
 
 def complete(system: str, user: str, max_tokens: int = 500) -> str:
     """
-    LLMにメッセージを送り、レスポンスのテキストを返す。
+    Send a message to the LLM and return the response text.
 
     Args:
-        system: システムプロンプト
-        user: ユーザーメッセージ
-        max_tokens: 最大トークン数（api バックエンドのみ有効）
+        system: System prompt
+        user: User message
+        max_tokens: Maximum number of tokens (only effective for the api backend)
 
     Returns:
-        LLMのレスポンステキスト
+        Response text from the LLM
     """
     backend = LLM_BACKEND
 
@@ -52,7 +52,7 @@ def _complete_api(system: str, user: str, max_tokens: int) -> str:
 
 
 def _complete_cli(system: str, user: str) -> str:
-    """claude CLIサブプロセス経由でレスポンスを取得する。"""
+    """Retrieve a response via the claude CLI subprocess."""
     prompt = f"{system}\n\n{user}"
     result = subprocess.run(
         ["claude", "--print"],
@@ -68,25 +68,25 @@ def _complete_cli(system: str, user: str) -> str:
 
 def _complete_mock(system: str, user: str) -> str:
     """
-    モックレスポンスを返す（テスト・シミュレーション用）。
+    Return a mock response (for tests and simulation).
 
-    システムプロンプトの内容からタスク種別を判定して適切なJSONを返す。
-    結果テキストに "QUALITY:<float>" タグが含まれる場合はその値をスコアとして使用する。
+    Determines the task type from the system prompt content and returns appropriate JSON.
+    If the result text contains a "QUALITY:<float>" tag, that value is used as the score.
     """
     import re
     if "difficulty" in system and "risk_level" in system:
-        # 難易度・リスク判定
+        # Difficulty/risk assessment
         return json.dumps({"difficulty": "medium", "risk_level": "low"})
-    elif "agent_name" in system or "サブタスクに分解" in system:
-        # サブタスク分解（ユーザーメッセージからエージェント名を抽出）
+    elif "agent_name" in system or "subtask" in system.lower():
+        # Subtask decomposition (extract agent names from the user message)
         agents = []
         for line in user.split("\n"):
             if line.startswith("- ") and ":" in line:
                 name = line[2:].split(":")[0].strip()
                 agents.append({"agent_name": name, "subtask": f"Subtask for {name}: {user[:50]}"})
         return json.dumps(agents if agents else [])
-    elif "score" in system or "品質評価" in system:
-        # サブタスク評価 — 結果テキストに品質タグがあればそれを使用
+    elif "score" in system or "quality" in system.lower():
+        # Subtask evaluation — use the quality tag from the result text if present
         quality_match = re.search(r"QUALITY:([\d.]+)", user)
         score = float(quality_match.group(1)) if quality_match else 0.75
         return json.dumps({"score": score, "reason": "mock evaluation"})

@@ -1,9 +1,9 @@
 """
-レビュアーサービス — LLM-as-a-Judge によるサブタスク評価。
+Reviewer service — subtask evaluation using LLM-as-a-Judge.
 
-非対称損失関数を考慮したプロンプト設計:
-- 見逃し（重要な問題を看過）は非線形に重いペナルティ → 厳しめに評価する
-- 過検出（問題なしを問題ありと判定）は軽微なペナルティ
+Prompt design incorporating an asymmetric loss function:
+- Misses (overlooking important issues) carry a non-linearly heavy penalty → evaluate strictly
+- False positives (flagging no-issue results as problematic) carry a mild penalty
 """
 
 import json
@@ -16,10 +16,10 @@ logger = logging.getLogger(__name__)
 
 _JSON_RE = re.compile(r'\{[^{}]*"score"[^{}]*\}', re.DOTALL)
 
-# risk_level ごとの重み付け（タスクのリスクレベルに応じた非対称損失の倍率）
-# - high: 見逃しペナルティを3倍重くする
-# - medium: 見逃しペナルティを2倍重くする
-# - low: 標準（1倍）
+# Weight per risk_level (multiplier for asymmetric loss based on task risk level)
+# - high:   miss penalty is 3x heavier
+# - medium: miss penalty is 2x heavier
+# - low:    standard (1x)
 _RISK_WEIGHT = {
     "low": 1.0,
     "medium": 2.0,
@@ -29,64 +29,64 @@ _RISK_WEIGHT = {
 
 def _build_system_prompt(risk_level: str) -> str:
     """
-    risk_level に応じた評価プロンプトを生成する。
+    Build an evaluation prompt tailored to the given risk_level.
 
-    非対称損失関数のパラメータをプロンプトに組み込み、
-    LLM評価者がリスクレベルを考慮した採点を行えるようにする。
+    Embeds asymmetric loss function parameters into the prompt so that
+    the LLM evaluator can score with the risk level in mind.
 
     Args:
-        risk_level: タスクのリスクレベル（low/medium/high）
+        risk_level: Task risk level (low/medium/high)
 
     Returns:
-        システムプロンプト文字列
+        System prompt string
     """
     risk = risk_level if risk_level in _RISK_WEIGHT else "medium"
     risk_weight = _RISK_WEIGHT[risk]
 
     return (
-        "あなたはタスク品質評価AIです。ワーカーエージェントのサブタスク実行結果を評価してください。\n\n"
-        "【評価基準】\n"
-        "- タスクの要件を満たしているか\n"
-        "- 結果の品質・正確性\n"
-        "- 重要な問題の見落としがないか（見逃しは重大なペナルティ）\n\n"
-        "【非対称損失原則】\n"
-        f"現在のリスクレベル: {risk}（見逃しペナルティ倍率: {risk_weight}x）\n"
-        "- 重要な問題を見逃した場合: 非線形に重いペナルティ（スコアを大幅に下げる）\n"
-        f"  ※ リスクレベル {risk} では見逃しを {risk_weight}x 倍重く扱う\n"
-        "- 過検出（問題なしを問題ありと判定）: 軽微なペナルティ\n\n"
-        "必ずJSON形式のみで返してください。\n"
-        '例: {"score": 0.85, "reason": "要件を概ね満たしているが軽微な問題あり"}'
+        "You are a task quality evaluation AI. Evaluate the subtask execution result of a worker agent.\n\n"
+        "[Evaluation criteria]\n"
+        "- Does the result satisfy the task requirements?\n"
+        "- Quality and accuracy of the result\n"
+        "- Are there any overlooked critical issues? (misses carry a severe penalty)\n\n"
+        "[Asymmetric loss principle]\n"
+        f"Current risk level: {risk} (miss penalty multiplier: {risk_weight}x)\n"
+        "- Overlooking a critical issue: non-linearly heavy penalty (score drops sharply)\n"
+        f"  * At risk level {risk}, misses are weighted {risk_weight}x heavier\n"
+        "- False positive (flagging no-issue as issue): mild penalty\n\n"
+        "Return JSON only.\n"
+        'Example: {"score": 0.85, "reason": "Requirements mostly met but minor issues found"}'
     )
 
 
 async def evaluate_subtask(prompt: str, result: str, risk_level: str = "medium") -> float:
     """
-    サブタスクの結果を Claude API で評価し、0.0〜1.0 のスコアを返す。
+    Evaluate a subtask result using the Claude API and return a score from 0.0 to 1.0.
 
-    非対称損失関数の考慮:
-    - risk_level が high のとき、見逃し（重要問題の看過）は3倍のペナルティ
-    - risk_level が medium のとき、見逃しは2倍のペナルティ
-    - risk_level が low のとき、標準（1倍）
-    - 過検出（問題なしを問題ありと判定）は比較的軽い扱い
+    Asymmetric loss function considerations:
+    - When risk_level is high, misses (overlooking critical issues) carry a 3x penalty
+    - When risk_level is medium, misses carry a 2x penalty
+    - When risk_level is low, standard (1x)
+    - False positives (flagging no-issue as issue) are treated leniently
 
     Args:
-        prompt: サブタスクの内容（何を達成すべきか）
-        result: ワーカーエージェントが返した結果テキスト
-        risk_level: タスクのリスクレベル（low/medium/high）
+        prompt: Subtask content (what needs to be accomplished)
+        result: Result text returned by the worker agent
+        risk_level: Task risk level (low/medium/high)
 
     Returns:
-        0.0〜1.0 のスコア（1.0が最高品質）
+        Score from 0.0 to 1.0 (1.0 is highest quality)
     """
     system = _build_system_prompt(risk_level)
     user_message = (
-        f"【サブタスク】\n{prompt}\n\n"
-        f"【実行結果】\n{result}"
+        f"[Subtask]\n{prompt}\n\n"
+        f"[Execution result]\n{result}"
     )
 
     try:
         raw = _llm.complete(system, user_message, max_tokens=200)
-        # CLIがMarkdownコードブロックや余分なテキストを返す場合に対応
-        # まず素のJSONを試み、失敗したら {"score": ...} を含むブロックを抽出する
+        # Handle cases where the CLI returns Markdown code fences or extra text.
+        # First try raw JSON; if that fails, extract the block containing {"score": ...}.
         candidate = raw.strip()
         if not candidate.startswith("{"):
             m = _JSON_RE.search(candidate)
@@ -96,7 +96,7 @@ async def evaluate_subtask(prompt: str, result: str, risk_level: str = "medium")
         score = float(data.get("score", 0.5))
     except (json.JSONDecodeError, ValueError, KeyError) as exc:
         logger.warning("Failed to parse reviewer response: %s | raw=%r", exc, raw[:200])
-        score = 0.5  # パース失敗時はデフォルト
+        score = 0.5  # Default on parse failure
 
-    # 0.0〜1.0 にクランプ
+    # Clamp to 0.0–1.0
     return max(0.0, min(1.0, score))
