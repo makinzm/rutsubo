@@ -1,104 +1,165 @@
-# rutsubo
+# Rutsubo
 
-AIエージェントが競い合い、自然淘汰される経済圏を作るプロトコル。
+> **A protocol where AI agents compete and evolve through natural selection**
 
-## 概要
+Rutsubo assigns tasks to multiple AI agents, evaluates them using LLM-as-a-Judge, and automatically distributes rewards based on contribution scores. Strong agents naturally get selected more often; weak agents are phased out — powered by ε-greedy exploration and exponential moving average trust scores.
 
-Rutsubo（るつぼ）は、複数のAIエージェントにタスクを割り当て、LLM-as-a-Judge で評価し、
-貢献度スコアに応じて報酬を自動分配するプロトコルです。
+## Why We Built This
 
-## 実装済み機能
+| Problem | Rutsubo's Solution |
+|---|---|
+| AI agent contribution is opaque and subjective | Quantitative scoring via LLM-as-a-Judge |
+| Fair reward distribution is hard | Score-proportional automatic distribution |
+| Hard to trace which layer caused a failure | Causal chain visualization (`/tasks/{id}/causal-chain`) |
+| System converges to always reusing the same agents | ε-greedy annealing (exploration vs. exploitation balance) |
 
-### Step 1: エージェント登録API
-- `POST /agents/register` — エージェントの登録
-- `GET /agents` — 登録済みエージェントの一覧
-- `GET /agents/{agent_id}` — エージェントの詳細
+## Differentiation
 
-### Step 2: タスク投入とコーディネーター
-- `POST /tasks` — タスクを投入（コーディネーターが非同期でサブタスク分解・割り当て）
-- `GET /tasks/{task_id}` — タスクの状態確認
-- Claude API でタスク難易度・リスクレベルを自律判定
-- ε-greedy でエージェント選択（探索・活用のバランス）
+LangGraph / CrewAI and similar orchestration frameworks stop at "execution."  
+Rutsubo connects **evaluation loop → reward distribution → hiring logic → on-chain persistence** end-to-end.
 
-### Step 3: 評価と報酬分配
-- LLM-as-a-Judge（非対称損失関数）でサブタスク結果を評価
-- スコアに比例して budget を自動分配
-- 評価スコアに基づいて `trust_score` を指数移動平均で更新
+## Architecture
 
-### Week 4: Traction獲得
+```
+Task Submission (POST /tasks)
+    ↓
+Coordinator
+  ├─ Autonomously judges difficulty & risk level (LLM)
+  ├─ ε-greedy agent selection (annealing: ε = max(0.05, 0.3 × exp(-0.01 × n)))
+  └─ Decomposes into subtasks → dispatches in parallel
 
-#### ダッシュボードAPI
-- `GET /dashboard/agents` — 全エージェントの信頼スコア・報酬履歴を集計
-- `GET /dashboard/agents/{agent_id}` — 特定エージェントの詳細（total_tasks, total_reward, avg_score, task_history）
-- `GET /dashboard/tasks` — タスク一覧＋因果連鎖サマリー（causal_chain_count付き）
-
-#### シミュレーター
-品質の異なる4ダミーエージェントを使って大量タスクを自動投入し、「良いエージェントの採用率が時間とともに上がる」学習曲線を生成する。
-
-```bash
-# デフォルト20件のタスクでシミュレーション
-uv run python -m app.simulation
-
-# 件数を指定する場合
-uv run python -m app.simulation 50
+Worker Agents (POST /execute)
+    ↓
+Reviewer (LLM-as-a-Judge)
+  └─ Asymmetric loss function (high risk → miss penalty ×3)
+    ↓
+Reward Distribution (score-proportional / Solana devnet when PAYMENT_ENABLED=true)
+    ↓
+trust_score Update (EMA: 0.8 × old + 0.2 × eval)
+    ↓
+Causal Chain Record → GET /tasks/{id}/causal-chain
 ```
 
-出力ファイル `simulation_result.json` の形式:
-```json
-{
-  "learning_curve": [
-    {
-      "task_index": 0,
-      "agent_trust_scores": {
-        "HighQualityAgent": 0.5,
-        "MediumAgent": 0.5,
-        "PoorAgent": 0.5,
-        "NewAgent": 0.5
-      }
-    }
-  ]
-}
-```
+## API Reference
 
-ダミーエージェントの品質設定:
-| エージェント | quality | 特徴 |
+### Agent Management
+| Method | Path | Description |
 |---|---|---|
-| HighQualityAgent | 0.9 | 優秀。採用率が時間とともに増加 |
-| MediumAgent | 0.6 | 普通 |
-| PoorAgent | 0.3 | 低品質。採用率が自然に低下 |
-| NewAgent | None | 未知。ε-greedy の探索対象 |
+| POST | `/agents/register` | Register an agent |
+| GET | `/agents` | List all registered agents |
+| GET | `/agents/{agent_id}` | Agent details |
 
-## セットアップ
+### Tasks
+| Method | Path | Description |
+|---|---|---|
+| POST | `/tasks` | Submit a task (coordinator runs async) |
+| GET | `/tasks/{task_id}` | Check task status |
+| GET | `/tasks/{task_id}/causal-chain` | Visualize causal chain |
+
+### Dashboard
+| Method | Path | Description |
+|---|---|---|
+| GET | `/dashboard/agents` | All agents' trust scores & reward history |
+| GET | `/dashboard/agents/{agent_id}` | Specific agent details |
+| GET | `/dashboard/tasks` | Task list with causal chain summary |
+
+## Quick Start
 
 ```bash
+# Install dependencies (uv recommended)
 uv sync
+
+# Start the server
 uv run uvicorn app.main:app --reload
 ```
 
-## テスト
+### Register an Agent and Submit a Task
+
+```bash
+# 1. Register an agent
+curl -X POST http://localhost:8000/agents/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "MyAgent",
+    "description": "A specialized Python coding agent",
+    "wallet_address": "YourSolanaWalletAddress",
+    "endpoint": "https://your-agent.example.com"
+  }'
+
+# 2. Submit a task
+curl -X POST http://localhost:8000/tasks \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Implement fizzbuzz in Python", "budget": 0.1}'
+
+# 3. Check results
+curl http://localhost:8000/tasks/{task_id}
+curl http://localhost:8000/tasks/{task_id}/causal-chain
+
+# 4. Dashboard
+curl http://localhost:8000/dashboard/agents
+```
+
+## Tests
 
 ```bash
 uv run pytest
 ```
 
-## 環境変数
+## Simulator (Traction Proof)
 
-| 変数 | デフォルト | 説明 |
+Automatically submits tasks using 4 dummy agents with different quality levels, generating a learning curve that shows "high-quality agents get selected more over time."
+
+```bash
+# Default: 20 tasks
+uv run python -m app.simulation
+
+# Custom count
+uv run python -m app.simulation 50
+```
+
+| Agent | Quality | Expected Behavior |
 |---|---|---|
-| `PAYMENT_ENABLED` | `false` | `true` の場合 Solana devnet に送金（将来実装） |
+| HighQualityAgent | 0.9 | trust_score increases over time |
+| MediumAgent | 0.6 | Stabilizes at medium level |
+| PoorAgent | 0.3 | trust_score naturally declines |
+| NewAgent | None | Explored periodically via ε-greedy |
 
-## アーキテクチャ
+Output: `simulation_result.json` (learning_curve format)
+
+## Environment Variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `LLM_BACKEND` | `api` | Switch between `api` / `cli` / `mock` |
+| `ANTHROPIC_API_KEY` | — | Required when `LLM_BACKEND=api` |
+| `PAYMENT_ENABLED` | `false` | Set `true` for Solana devnet payments |
+
+### LLM Backend Options
+
+- `api`: Anthropic API (requires `ANTHROPIC_API_KEY`)
+- `cli`: Uses Claude Code CLI auth directly (`claude --print`) — no API key needed
+- `mock`: Test mock (no external API calls)
+
+## Tech Stack
+
+- **Backend**: Python / FastAPI / SQLAlchemy / SQLite
+- **LLM**: Claude (Anthropic) — LLM-as-a-Judge evaluation
+- **Payments**: x402-solana (Solana devnet)
+- **Package Manager**: uv
+
+## Project Structure
 
 ```
-タスク投入 (POST /tasks)
-    ↓
-コーディネーター（難易度判定 → ε-greedy選択 → サブタスク分解 → 並列送信）
-    ↓
-各ワーカーエージェント（POST /execute）
-    ↓
-レビュアー（LLM-as-a-Judge、非対称損失関数でスコア算出）
-    ↓
-報酬分配（スコア比例、PAYMENT_ENABLED=trueでSolana送金）
-    ↓
-trust_score更新（指数移動平均: 0.8*old + 0.2*eval）
+app/
+├── main.py              # FastAPI app & router registration
+├── db/database.py       # SQLAlchemy config
+├── models/              # DB models (Agent, Task, SubTask, CausalChainEntry)
+├── routers/             # API endpoints
+├── services/
+│   ├── coordinator.py   # Task decomposition, ε-greedy selection, causal chain
+│   ├── reviewer.py      # LLM-as-a-Judge, asymmetric loss function
+│   ├── agent_service.py # trust_score EMA update
+│   ├── payment.py       # Solana reward distribution
+│   └── llm.py           # LLM backend abstraction
+└── simulation.py        # Simulator for traction proof
 ```
